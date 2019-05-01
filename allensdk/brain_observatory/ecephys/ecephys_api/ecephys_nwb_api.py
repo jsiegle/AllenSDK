@@ -4,6 +4,7 @@ from typing import Dict, Union, List
 import pandas as pd
 import numpy as np
 import pynwb
+import xarray
 
 from .ecephys_api import EcephysApi
 from allensdk.brain_observatory.nwb.nwb_api import NwbApi
@@ -37,6 +38,9 @@ class EcephysNwbApi(NwbApi, EcephysApi):
         units_table.drop(columns=['spike_times', 'waveform_mean'], inplace=True)
 
         return units_table
+
+    # def get_lfp(self, probe_id: int) -> xr.DataArray:
+        
 
     def get_ecephys_session_id(self) -> int:
         return int(self.nwbfile.identifier)
