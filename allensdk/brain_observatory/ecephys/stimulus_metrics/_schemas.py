@@ -28,6 +28,7 @@ class DotMotion(DefaultSchema):
     stimulus_key = String(help='Key for the dot motion stimulus')
 
 
+
 class ContrastTuning(DefaultSchema):
 
     stimulus_key = String(help='Key for the contrast tuning stimulus')
