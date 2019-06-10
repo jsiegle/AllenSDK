@@ -8,7 +8,7 @@ def compute_metrics(units_df, session, args):
     # 1. extract presentationwise spike counts
     # 2. extract conditionwise mean spike counts
     # 3. extract running vs non-running for each trial
-    # 4. extract spontaneous distribution
+    # 4. extract spontaneous distribution [pre-stim baseline]
 
     # TODO:
     # - time to peak

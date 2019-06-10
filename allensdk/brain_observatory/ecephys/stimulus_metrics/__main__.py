@@ -38,9 +38,9 @@ def calculate_stimulus_metrics(args):
 
     df = reduce(lambda nwb_path, output: \
                  pd.concat(output,
-                           add_metrics_to_units_table(nwb_path, functions, args),
-                           axis=0),
-                 args['nwb_paths'])
+                           add_metrics_to_units_table(nwb_path, functions, args)),
+                 args['nwb_paths'],
+                 pd.DataFrame())
 
     df.to_feather(args['output_file_location'])
 
