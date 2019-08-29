@@ -680,12 +680,59 @@ def calculate_time_delayed_correlation(dataset):
 
     for unit_idx, unit in enumerate(dataset.unit_id):
         
-        spikes_for_unit = dataset['spike_counts'].sel(unit_id=unit).data
+        spikes_for_unit = dataset.sel(unit_id=unit).data
 
         for i in np.arange(nbins-1):
             for j in np.arange(i+1, nbins):
                 good_trials = (spikes_for_unit[:,i] * spikes_for_unit[:,j]) > 0 # remove zero spike count bins
-                r, p = st.pearsonr(spikes_for_unit[good_trials,i], spikes_for_unit[good_trials,j])
-                rsc_time_matrix[unit_idx, i, j] = r
+                #print(good_trials)
+                if len(np.where(good_trials==True)[0])>5:
+                    #print(spikes_for_unit[good_trials,i].shape)
+                    r, p = st.pearsonr(spikes_for_unit[good_trials,i], spikes_for_unit[good_trials,j])
+                    rsc_time_matrix[unit_idx, i, j] = r
+                else:
+                    rsc_time_matrix[unit_idx, i, j] = np.NaN
 
     return rsc_time_matrix
+
+
+def get_PSTH_alldim(unit_binarized, PSTH_bintime, value='mean', fs=1000):
+    """Calculate PSTH averaged across trials based on binarized spike trains.
+    unit_binarized: last dimension is time
+    PSTH_bintime: dividable by unit_binarized.shape[-1]
+    """
+    unit_binarized=np.array(unit_binarized)
+    unit_psth = unit_binarized.reshape(unit_binarized.shape[:-1] + (int(unit_binarized.shape[-1]/PSTH_bintime), PSTH_bintime))
+    if value=='mean':
+        unit_psth = unit_psth.mean(-1)
+    if value=='count':
+        unit_psth = unit_psth.sum(-1)
+    time = np.array(range(int(unit_binarized.shape[-1]/PSTH_bintime)))*PSTH_bintime/1000.
+    return unit_psth, time
+
+
+def responsiveness(spikes_pref, PSTH_bintime=10):
+    """
+    spikes_pref: neuron*trial*time
+    Calculate responsiveness comparing evoked response to baseline across trials
+    TODO: the time window is hard coded because of defination of baseline and evoked response window
+    """
+    # check stimulus synch alignment with PSTH
+    from scipy.stats import ttest_ind
+
+    unit_psth_rep, time = get_PSTH_alldim(spikes_pref, PSTH_bintime=PSTH_bintime)
+    n = spikes_pref.shape[0]
+
+    p_resp=np.zeros(n)
+    for i in range(n):
+        tmp = unit_psth_rep[i, :, :]
+        spon = np.nanmean(tmp[:,:(40/PSTH_bintime)], axis=1)
+        evoked = np.max(tmp[:,(50/PSTH_bintime):(150/PSTH_bintime)], axis=1)
+        t, p = ttest_ind(spon, evoked)
+        if np.isnan(p)==1:
+            # both spon and evoked are 0
+            p_resp[i]=1
+        else:
+            p_resp[i]=p
+    return p_resp
+
