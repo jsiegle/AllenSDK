@@ -146,7 +146,7 @@ class StimulusAnalysis(object):
                 stims_table = self.ecephys_session.stimulus_presentations
                 self._stimulus_key = self._find_stimulus_key(stims_table)
                 if self._stimulus_key is None:
-                    raise Exception('Could not find approipate stimulus_name key for current stimulus type. Please '
+                    raise Exception('Could not find appropriate stimulus_name key for current stimulus type. Please '
                                     'specify using the stimulus_key parameter.')
 
             self._stim_table = self.ecephys_session.get_presentations_for_stimulus(
