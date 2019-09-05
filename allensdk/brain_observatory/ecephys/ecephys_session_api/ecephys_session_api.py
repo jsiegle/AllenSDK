@@ -26,6 +26,9 @@ class EcephysSessionApi:
     def get_stimulus_presentations(self) -> pd.DataFrame:
         raise NotImplementedError
 
+    def get_invalid_times(self) -> pd.DataFrame:
+        raise NotImplementedError
+
     def get_probes(self) -> pd.DataFrame:
         raise NotImplementedError
 
@@ -48,4 +51,7 @@ class EcephysSessionApi:
         raise NotImplementedError
 
     def get_optogenetic_stimulation(self) -> pd.DataFrame:
+        raise NotImplementedError
+
+    def get_spike_amplitudes(self) -> Dict[int, np.ndarray]:
         raise NotImplementedError

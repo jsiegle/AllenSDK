@@ -159,6 +159,7 @@ class EcephysSession(LazyPropertyMixin):
         self.mean_waveforms = self.LazyProperty(self.api.get_mean_waveforms, wrappers=[self._build_mean_waveforms])
         self.spike_times = self.LazyProperty(self.api.get_spike_times, wrappers=[self._build_spike_times])
         self.optogenetic_stimulation_epochs = self.LazyProperty(self.api.get_optogenetic_stimulation)
+        self.spike_amplitudes = self.LazyProperty(self.api.get_spike_amplitudes)
 
         self.probes = self.LazyProperty(self.api.get_probes)
         self.channels = self.LazyProperty(self.api.get_channels)
@@ -166,7 +167,7 @@ class EcephysSession(LazyPropertyMixin):
         self.stimulus_presentations = self.LazyProperty(self.api.get_stimulus_presentations, wrappers=[self._build_stimulus_presentations])
         self.units = self.LazyProperty(self.api.get_units, wrappers=[self._build_units_table])
         self.inter_presentation_intervals = self.LazyProperty(self._build_inter_presentation_intervals)
-
+        self.invalid_times = self.LazyProperty(self.api.get_invalid_times)
 
     def get_current_source_density(self, probe_id):
         """ Obtain current source density (CSD) image for this probe. Please see
@@ -296,6 +297,11 @@ class EcephysSession(LazyPropertyMixin):
             ]
 
         return epochs.loc[:, ["start_time", "stop_time", "duration", "stimulus_name", "stimulus_block"]]
+
+    def get_invalid_times(self):
+
+        return self.invalid_times
+
 
     def presentationwise_spike_counts(
         self, 
@@ -478,7 +484,7 @@ class EcephysSession(LazyPropertyMixin):
         spike_counts["spike_count"] = np.zeros(spike_counts.shape[0])
         spike_counts = spike_counts.groupby(["stimulus_presentation_id", "unit_id"]).count()
         unit_ids = unit_ids if unit_ids is not None else spikes['unit_id'].unique()  # If not explicity stated get unit ids from spikes table.
-        spike_counts = spike_counts.reindex(pd.MultiIndex.from_product([spike_counts.index.levels[0],
+        spike_counts = spike_counts.reindex(pd.MultiIndex.from_product([stimulus_presentation_ids,
                                                                         unit_ids],
                                                                        names=['stimulus_presentation_id', 'unit_id']),
                                             fill_value=0)
@@ -579,8 +585,8 @@ class EcephysSession(LazyPropertyMixin):
             one element longer than labels. Start and end indices for intervals.
 
         """
-        structure_id_key = "manual_structure_id"
-        structure_label_key = "manual_structure_acronym"
+        structure_id_key = "structure_id"
+        structure_label_key = "structure_acronym"
         np.array(channel_ids).sort()
         table = self.channels.loc[channel_ids]
 
@@ -670,8 +676,8 @@ class EcephysSession(LazyPropertyMixin):
         table.index.name = 'unit_id'
         table = table.rename(columns={
             'description': 'probe_description',
-            'manual_structure_id': 'structure_id',
-            'manual_structure_acronym': 'structure_acronym',
+            #'manual_structure_id': 'structure_id',
+            #'manual_structure_acronym': 'structure_acronym',
             'local_index_channel': 'channel_local_index',
         })
 
