@@ -82,8 +82,7 @@ class Flashes(StimulusAnalysis):
                 ('sustained_idx_fl', np.float64),
                 ('firing_rate_fl', np.float64), 
                 ('time_to_peak_fl', np.float64), 
-                ('reliability_fl', np.float64),
-                ('fano_fl', np.float64), 
+                ('fano_fl', np.float64),
                 ('lifetime_sparseness_fl', np.float64), 
                 ('run_pval_fl', np.float64),
                 ('run_mod_fl', np.float64)]
@@ -100,8 +99,6 @@ class Flashes(StimulusAnalysis):
                 metrics_df['sustained_idx_fl'] = [self._get_sustained_index(unit, self._get_preferred_condition(unit))
                                                   for unit in unit_ids]
                 metrics_df['firing_rate_fl'] = [self._get_overall_firing_rate(unit) for unit in unit_ids]
-                metrics_df['reliability_fl'] = [self._get_reliability(unit, self._get_preferred_condition(unit))
-                                                for unit in unit_ids]
                 metrics_df['time_to_peak_fl'] = [self._get_time_to_peak(unit, self._get_preferred_condition(unit))
                                                  for unit in unit_ids]
                 metrics_df['fano_fl'] = [self._get_fano_factor(unit, self._get_preferred_condition(unit))
@@ -120,7 +117,7 @@ class Flashes(StimulusAnalysis):
         :param stim_table:
         :return:
         """
-        known_keys_lc = [k.lower() for k in self.known_stimulus_keys]
+        known_keys_lc = [k.lower() for k in self.__class__.known_stimulus_keys()]
 
         for table_key in stim_table['stimulus_name'].unique():
             table_key_lc = table_key.lower()
@@ -131,8 +128,8 @@ class Flashes(StimulusAnalysis):
         else:
             return None
 
-    @property
-    def known_stimulus_keys(self):
+    @classmethod
+    def known_stimulus_keys(cls):
         return ['flash', 'flashes']
 
     def _get_stim_table_stats(self):

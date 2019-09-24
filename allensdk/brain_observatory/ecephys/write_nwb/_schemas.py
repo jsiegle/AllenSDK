@@ -3,6 +3,7 @@ from marshmallow import RAISE
 from argschema import ArgSchema
 from argschema.fields import (
     LogLevel,
+    Dict,
     String,
     Int,
     DateTime,
@@ -25,7 +26,6 @@ class Channel(RaisingSchema):
     local_index = Int(required=True)
     probe_vertical_position = Int(required=True)
     probe_horizontal_position = Int(required=True)
-
     #structure_id = Int(required=True, allow_none=True)
     #structure_acronym = String(required=True, allow_none=True)
     #AP_coordinate = Float(required=True, allow_none=True)
@@ -41,7 +41,6 @@ class Channel(RaisingSchema):
 
     manual_structure_id = Int(required=True, allow_none=True)
     manual_structure_acronym = String(required=True, allow_none=True)
-
 
 
 class Unit(RaisingSchema):
@@ -61,13 +60,6 @@ class Unit(RaisingSchema):
     isi_violations = Float(required=True)
     presence_ratio = Float(required=True)
     amplitude_cutoff = Float(required=True)
-<<<<<<< HEAD
-    isolation_distance = Float(required=True)
-    l_ratio = Float(required=True)
-    d_prime = Float(required=True)
-    nn_hit_rate = Float(required=True)
-    nn_miss_rate = Float(required=True)
-=======
     isolation_distance = Float(required=True, allow_none=True)
     l_ratio = Float(required=True, allow_none=True)
     d_prime = Float(required=True, allow_none=True)
@@ -85,7 +77,6 @@ class Unit(RaisingSchema):
     spread = Float(required=True, allow_none=True)
     velocity_above = Float(required=True, allow_none=True)
     velocity_below = Float(required=True, allow_none=True)
->>>>>>> 207bbbf428be5b7ddc10953b6ed0b268d7770a91
 
 
 class Lfp(RaisingSchema):
@@ -103,10 +94,14 @@ class Probe(RaisingSchema):
     mean_waveforms_path = String(required=True, validate=check_read_access)
     channels = Nested(Channel, many=True, required=True)
     units = Nested(Unit, many=True, required=True)
-    lfp = Nested(Lfp, many=False, required=True)
-    csd_path = String(required=True, validate=check_read_access, help="path to h5 file containing calculated current source density")
+    lfp = Nested(Lfp, many=False, required=True, allow_none=True)
+    csd_path = String(required=True,
+                      validate=check_read_access,
+                      allow_none=True,
+                      help="path to h5 file containing calculated current source density")
     sampling_rate = Float(default=30000.0, help="sampling rate (Hz, master clock) at which raw data were acquired on this probe")
-    lfp_sampling_rate = Float(default=2500.0, help="sampling rate of LFP data on this probe")
+    lfp_sampling_rate = Float(default=2500.0, allow_none=True, help="sampling rate of LFP data on this probe")
+    temporal_subsampling_factor = Float(default=2.0, allow_none=True, help="subsampling factor applied to lfp data for this probe (across time)")
     spike_amplitudes_path = String(validate=check_read_access, 
         help="path to npy file containing scale factor applied to the kilosort template used to extract each spike"
     )
@@ -116,9 +111,13 @@ class Probe(RaisingSchema):
     templates_path = String(validate=check_read_access,
         help="path to file contianing an (nTemplates)x(nSamples)x(nUnits) array of kilosort templates"
     )
-    amplitude_scale_factor = Float(default=0.195e-6, 
-        help="amplitude scale factor converting raw amplitudes to Volts"
+    inverse_whitening_matrix_path = String(validate=check_read_access,
+        help="Kilosort templates are whitened. In order to use them for scaling spike amplitudes to volts, we need to remove the whitening"
     )
+    amplitude_scale_factor = Float(default=0.195e-6, 
+        help="amplitude scale factor converting raw amplitudes to Volts. Default converts from bits -> uV -> V"
+    )
+
 
 class InvalidEpoch(RaisingSchema):
     id = Int(required=True)
@@ -126,6 +125,15 @@ class InvalidEpoch(RaisingSchema):
     label = String(required=True)
     start_time = Float(required=True)
     end_time = Float(required=True)
+
+
+class SessionMetadata(RaisingSchema):
+      specimen_name = String(required=True)
+      age_in_days = Float(required=True)
+      full_genotype = String(required=True)
+      strain = String(required=True)
+      sex = String(required=True)
+      stimulus_name = String(required=True)
 
 
 class InputSchema(ArgSchema):
@@ -168,8 +176,27 @@ class InputSchema(ArgSchema):
         required=True,
         help="data collected about the running behavior of the experiment's subject",
     )
+    session_sync_path = String(
+        required=True,
+        validate=check_read_access,
+        help="Path to an h5 experiment session sync file (*.sync). This file relates events from different acquisition modalities to one another in time."
+    )
+    eye_tracking_rig_geometry = Dict(
+        required=True,
+        help="Mapping containing information about session rig geometry used for eye gaze mapping."
+    )
+    eye_dlc_ellipses_path = String(
+        required=True,
+        validate=check_read_access,
+        help="h5 filepath containing raw ellipse fits produced by Deep Lab Cuts of subject eye, pupil, and corneal reflections during experiment"
+    )
+    eye_gaze_mapping_path = String(
+        required=False,
+        allow_none=True,
+        help="h5 filepath containing eye gaze behavior of the experiment's subject"
+    )
     pool_size = Int(
-        default=3, 
+        default=3,
         help="number of child processes used to write probewise lfp files"
     )
     optotagging_table_path = String(
@@ -177,6 +204,7 @@ class InputSchema(ArgSchema):
         validate=check_read_access,
         help="file at this path contains information about the optogenetic stimulation applied during this "
     )
+    session_metadata = Nested(SessionMetadata, allow_none=True, required=False, help="miscellaneous information describing this session")
 
 
 class ProbeOutputs(RaisingSchema):

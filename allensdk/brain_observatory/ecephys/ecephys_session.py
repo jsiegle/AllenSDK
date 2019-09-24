@@ -144,10 +144,61 @@ class EcephysSession(LazyPropertyMixin):
     def stimulus_names(self):
         return self.stimulus_presentations['stimulus_name'].unique().tolist()
 
+
     @property
     def stimulus_conditions(self):
         self.stimulus_presentations
         return self._stimulus_conditions
+
+
+    @property
+    def corneal_reflection_ellipse_fits(self):
+        return self._eye_tracking_ellipse_fit_data["cr_ellipse_fits"]
+
+
+    @property
+    def eye_ellipse_fits(self):
+        return self._eye_tracking_ellipse_fit_data["eye_ellipse_fits"]
+
+
+    @property
+    def pupil_ellipse_fits(self):
+        return self._eye_tracking_ellipse_fit_data["pupil_ellipse_fits"]
+    
+
+    @property
+    def rig_geometry_data(self):
+        return self._eye_tracking_ellipse_fit_data["rig_geometry_data"]
+
+
+    @property
+    def rig_equipment_name(self):
+        return self._eye_tracking_ellipse_fit_data["rig_equipment"]
+
+
+    @property
+    def specimen_name(self):
+        return self._metadata["specimen_name"]
+
+
+    @property
+    def age_in_days(self):
+        return self._metadata["age_in_days"]
+
+
+    @property
+    def sex(self):
+        return self._metadata["sex"]
+
+
+    @property
+    def full_genotype(self):
+        return self._metadata["full_genotype"]
+
+
+    @property
+    def session_type(self):
+        return self._metadata["stimulus_name"]
 
 
     def __init__(self, api, **kwargs):
@@ -169,11 +220,18 @@ class EcephysSession(LazyPropertyMixin):
         self.inter_presentation_intervals = self.LazyProperty(self._build_inter_presentation_intervals)
         self.invalid_times = self.LazyProperty(self.api.get_invalid_times)
 
+        self._eye_tracking_ellipse_fit_data = self.LazyProperty(self.api.get_eye_tracking_ellipse_fit_data)
+        self.raw_eye_gaze_mapping_data = self.LazyProperty(self.api.get_raw_eye_gaze_mapping_data)
+        self.filtered_eye_gaze_mapping_data = self.LazyProperty(self.api.get_filtered_eye_gaze_mapping_data)
+
+        self._metadata = self.LazyProperty(self.api.get_metadata)
+
+
     def get_current_source_density(self, probe_id):
         """ Obtain current source density (CSD) image for this probe. Please see
         allensdk.brain_observatory.ecephys.current_source_density for details and implementation of our current 
         source density calculation. Briefly:
-        - we use a 2D method for csd calculation
+        - we use a 1D method for csd calculation
         - csd is calculated relative to flash stimulus onset
 
         Parameters
@@ -185,7 +243,7 @@ class EcephysSession(LazyPropertyMixin):
         -------
         xr.DataArray :
             dimensions are channel (id) and time (seconds, relative to stimulus onset). Values are current source 
-            density assessed on that channel at that time (V/s^2)
+            density assessed on that channel at that time (V/m^2)
 
         """
 
@@ -447,6 +505,10 @@ class EcephysSession(LazyPropertyMixin):
                 presentation_ids.append(np.zeros([values.size]) + presentations[ii])
                 spike_times.append(values)
 
+        if not spike_times:
+            # If there are no units firing during the given stimulus return an empty dataframe
+            return pd.DataFrame(columns=['spike_times', 'stimulus_presentation', 'unit_id'])
+
         return pd.DataFrame({
             'stimulus_presentation_id': np.concatenate(presentation_ids).astype(int),
             'unit_id': np.concatenate(unit_ids).astype(int)
@@ -480,17 +542,22 @@ class EcephysSession(LazyPropertyMixin):
             stimulus_presentation_ids=stimulus_presentation_ids, unit_ids=unit_ids
         )
 
-        spike_counts = spikes.copy()
-        spike_counts["spike_count"] = np.zeros(spike_counts.shape[0])
-        spike_counts = spike_counts.groupby(["stimulus_presentation_id", "unit_id"]).count()
-        unit_ids = unit_ids if unit_ids is not None else spikes['unit_id'].unique()  # If not explicity stated get unit ids from spikes table.
-        spike_counts = spike_counts.reindex(pd.MultiIndex.from_product([stimulus_presentation_ids,
-                                                                        unit_ids],
-                                                                       names=['stimulus_presentation_id', 'unit_id']),
-                                            fill_value=0)
+        if spikes.empty:
+            # In the case there are no spikes
+            spike_counts = pd.DataFrame({'spike_count': 0},
+                                        index=pd.MultiIndex.from_product([stimulus_presentation_ids, unit_ids],
+                                                                         names=['stimulus_presentation_id', 'unit_id']))
 
-        # In the case there are units/presentation_ids with no corresponding id in spikes not in presentations (see
-        #  unit test) a right join will mess up the index with nan values. Use left to ensure index is not affected.
+        else:
+            spike_counts = spikes.copy()
+            spike_counts["spike_count"] = np.zeros(spike_counts.shape[0])
+            spike_counts = spike_counts.groupby(["stimulus_presentation_id", "unit_id"]).count()
+            unit_ids = unit_ids if unit_ids is not None else spikes['unit_id'].unique()  # If not explicity stated get unit ids from spikes table.
+            spike_counts = spike_counts.reindex(pd.MultiIndex.from_product([stimulus_presentation_ids,
+                                                                            unit_ids],
+                                                                           names=['stimulus_presentation_id',
+                                                                                  'unit_id']), fill_value=0)
+
         sp = pd.merge(spike_counts, presentations, left_on="stimulus_presentation_id", right_index=True, how="left")
         sp.reset_index(inplace=True)
 

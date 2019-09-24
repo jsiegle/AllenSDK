@@ -176,8 +176,14 @@ def test_conditionwise_statistics(ecephys_api):
     assert(set(stim_analysis.conditionwise_statistics.index.names) == {'unit_id', 'stimulus_condition_id'})
     assert(set(stim_analysis.conditionwise_statistics.columns) ==
            {'spike_std', 'spike_sem', 'spike_count', 'stimulus_presentation_count', 'spike_mean'})
-    assert(np.allclose(stim_analysis.conditionwise_statistics.loc[(0, 1)].values,
-                       [2.0, 3.0, 0.66666667, 0.57735027, 0.33333333]))
+
+    expected = pd.Series(
+        [2.0, 3.0, 0.66666667, 0.57735027, 0.33333333], 
+        ["spike_count", "stimulus_presentation_count", "spike_mean", "spike_std", "spike_sem"]
+    )
+    obtained = stim_analysis.conditionwise_statistics.loc[(0, 1)]
+    pd.testing.assert_series_equal(expected, obtained[expected.index], check_less_precise=5, check_names=False)
+
 
 def test_presentationwise_spike_times(ecephys_api):
     session = EcephysSession(api=ecephys_api)
@@ -241,6 +247,13 @@ def test_get_preferred_condition(ecephys_api):
 
     with pytest.raises(KeyError):
         stim_analysis._get_preferred_condition(10)
+
+def test_check_multiple_preferred_conditions(ecephys_api):
+    session = EcephysSession(api=ecephys_api)
+    stim_analysis = StimulusAnalysis(ecephys_session=session, stimulus_key='s0')
+
+    assert(stim_analysis._check_multiple_pref_conditions(0, 'conditions', [0, 1]) is False)
+    assert(stim_analysis._check_multiple_pref_conditions(3, 'conditions', [0, 1]) is True)
 
 
 def test_get_time_to_peak(ecephys_api):
