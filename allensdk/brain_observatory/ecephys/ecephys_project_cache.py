@@ -297,7 +297,7 @@ class EcephysProjectCache(Cache):
         data = method(**method_kwargs)
         return data[key].unique().tolist()
 
-    def get_unit_analysis_metrics_for_session(self, session_id, annotate=True):
+    def get_unit_analysis_metrics_for_session(self, session_id, annotate=True, **kwargs):
         """ Cache and return a table of analysis metrics calculated on each unit from a specified session. See 
         get_sessions for a list of sessions.
 
@@ -326,14 +326,14 @@ class EcephysProjectCache(Cache):
         )
 
         if annotate:
-            units = self.get_units()
+            units = self.get_units(**kwargs)
             units = units[units["ecephys_session_id"] == session_id]
             metrics = pd.merge(units, metrics, left_index=True, right_index=True, how="inner")
             metrics.index.rename("ecephys_unit_id", inplace=True)
 
         return metrics
 
-    def get_unit_analysis_metrics_by_session_type(self, session_type, annotate=True):
+    def get_unit_analysis_metrics_by_session_type(self, session_type, annotate=True, **kwargs):
         """ Cache and return a table of analysis metrics calculated on each unit from a specified session type. See 
         get_all_session_types for a list of session types.
 
@@ -366,7 +366,7 @@ class EcephysProjectCache(Cache):
         )
 
         if annotate:
-            units = self.get_units()
+            units = self.get_units(**kwargs)
             metrics = pd.merge(units, metrics, left_index=True, right_index=True, how="inner")
             metrics.index.rename("ecephys_unit_id", inplace=True)
 
