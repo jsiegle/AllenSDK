@@ -520,6 +520,32 @@ class StimulusAnalysis(object):
 
         return peak_time
 
+    def _get_time_to_first_spike(self, unit_id, preferred_condition, minimum_time_s = 0.03, maximum_time_s = 0.2):
+        """Equal to the median latency to first spike at the preferred condition"""
+        
+        presentation_ids = self.presentationwise_statistics.xs(unit_id, level=1)[
+            self.presentationwise_statistics.xs(unit_id, level=1)['stimulus_condition_id']
+            == preferred_condition].index.values
+        
+        df = self.presentationwise_spike_times[
+            (self.presentationwise_spike_times['stimulus_presentation_id'].isin(presentation_ids)) &
+            (self.presentationwise_spike_times['unit_id'] == unit_id)
+        ]
+
+        df = df.reset_index('spike_time')
+        
+        df['spike_latency'] = df['spike_time'] - self.stim_table.loc[df.stimulus_presentation_id].start_time.values
+
+        df = df[(df.spike_latency > minimum_time_s) & \
+           (df.spike_latency < maximum_time_s)]
+        
+        first_spike_times = df.groupby('stimulus_presentation_id').min()['spike_latency']
+
+        time_to_first_spike = np.around(np.median(first_spike_times),3)
+
+        return time_to_first_spike
+        
+
     def _get_overall_firing_rate(self, unit_id):
         """ Average firing rate over the entire stimulus interval"""
         if self._block_starts is None:
