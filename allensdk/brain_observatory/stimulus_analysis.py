@@ -33,7 +33,9 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 #
+import warnings
 import scipy.stats as st
+import scipy
 import numpy as np
 import pandas as pd
 import logging
@@ -85,6 +87,10 @@ class StimulusAnalysis(object):
         self._mean_sweep_response = StimulusAnalysis._PRELOAD
         self._pval = StimulusAnalysis._PRELOAD
         self._peak = StimulusAnalysis._PRELOAD
+
+        # get_speed_tuning emits a warning describing a scipy ks_2samp update. 
+        # we only want to see this warning once
+        self.__warned_speed_tuning = False
 
     @property
     def stim_table(self):
@@ -285,6 +291,13 @@ class StimulusAnalysis(object):
         tuple: binned_dx_sp, binned_cells_sp, binned_dx_vis, binned_cells_vis, peak_run
         """
 
+        if not self.__warned_speed_tuning:
+            self.__warned_speed_tuning = True
+            warnings.warn(
+                f"scipy 1.3 (your version: {scipy.__version__}) improved two-sample Kolmogorov-Smirnoff test p values for small and medium-sized samples. "
+                "Precalculated speed tuning p values may not agree with outputs obtained under recent scipy versions!"
+            )
+
         StimulusAnalysis._log.info(
             'Calculating speed tuning, spontaneous vs visually driven')
 
@@ -465,14 +478,14 @@ class StimulusAnalysis(object):
                     nc, start_max * binsize:(start_max + 1) * binsize]
                 other_values = np.delete(celltraces_sorted_sp[nc, :], range(
                     start_max * binsize, (start_max + 1) * binsize))
-                (_, peak_run.ptest_sp[nc]) = st.ks_2samp(
+                (_, peak_run.ptest_sp[nc]) = nonraising_ks_2samp(
                     test_values, other_values)
             else:
                 test_values = celltraces_sorted_sp[
                     nc, start_min * binsize:(start_min + 1) * binsize]
                 other_values = np.delete(celltraces_sorted_sp[nc, :], range(
                     start_min * binsize, (start_min + 1) * binsize))
-                (_, peak_run.ptest_sp[nc]) = st.ks_2samp(
+                (_, peak_run.ptest_sp[nc]) = nonraising_ks_2samp(
                     test_values, other_values)
             temp = binned_cells_vis[nc, :, 0]
             start_max = temp.argmax()
@@ -489,7 +502,7 @@ class StimulusAnalysis(object):
                     nc, start_min * binsize:(start_min + 1) * binsize]
                 other_values = np.delete(celltraces_sorted_vis[nc, :], range(
                     start_min * binsize, (start_min + 1) * binsize))
-            (_, peak_run.ptest_vis[nc]) = st.ks_2samp(
+            (_, peak_run.ptest_vis[nc]) = nonraising_ks_2samp(
                 test_values, other_values)
 
         return binned_dx_sp, binned_cells_sp, binned_dx_vis, binned_cells_vis, peak_run
@@ -581,3 +594,13 @@ class StimulusAnalysis(object):
         else:
             raise Exception("Could not find row for csid(%s) idx(%s)" % (str(csid), str(idx)))
     
+    
+def nonraising_ks_2samp(data1, data2, **kwargs):
+    """ scipy.stats.ks_2samp now raises a ValueError if one of the input arrays 
+    is of length 0. Previously it signaled this case by returning nans. This 
+    function restores the prior behavior.
+    """
+
+    if min(len(data1), len(data2)) == 0:
+        return (np.nan, np.nan)
+    return st.ks_2samp(data1, data2, **kwargs)

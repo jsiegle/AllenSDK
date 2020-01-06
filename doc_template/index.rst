@@ -26,7 +26,7 @@ The Allen Software Development Kit houses source code for reading and processing
 The Allen SDK focuses on the Allen Brain Observatory, Cell Types Database, and Mouse Brain Connectivity Atlas.
 
 .. ATTENTION::
-    We will be dropping for py2 support in October 2019, and any files with a py2 dependency (for example analysis files) will also be updated.
+    As of October 2019, we have dropped Python 2 support and any files with a py2 dependency (for example analysis files) have been updated.
 
 .. image:: /_static/sdk_cam.png
    :align: right
@@ -90,20 +90,40 @@ The Allen SDK provides Python code for accessing experimental metadata along wit
 
 See the `mouse connectivity section <connectivity.html>`_ for more details.
 
-What's New - Release 0.16.3 (May 22, 2019)
------------------------------------------------
+What's New - 1.3.0 (December 12, 2019)
+-----------------------------------------------------------------------
 
-The 0.16.3 release resolves changes to the api of a dependency that resizes an image:
+The 1.3.0 release adds
 
-    * `#659 <https://github.com/AllenInstitute/AllenSDK/issues/659>`_ Use pillow/Image.resize instead of scipy.misc.imresize
-    
-We also went back and made sure that the example Jupyter notebooks still run:
+- Improved Neuropixels data download performance by enabling asynchronous transfers. Users can now also specify a timeout and number of retries when downloading data.
 
-    * `#661 <https://github.com/AllenInstitute/AllenSDK/issues/661>`_ Update example notebooks
+and fixes
+
+- Hanging downloads for Neuropixels NWB files
+- Updated AllenSDK readme and contributing documentation
+
+What's New - 1.2.0 (November 21, 2019)
+-----------------------------------------------------------------------
+
+The 1.2.0 release adds 
+
+- (internal feature) A project cache for the Behavior Ophys project, with example notebook
+- (internal feature) A major overhaul of the `BehaviorOphysLimsApi`
+- (internal feature) Updates to the `EcephysProjectLimsApi` such that it returns data in the same format as the `EcephyProjectWarehouseApi`
+- improved eye-tracking area calculation
+
+and fixes
+
+- several flaky tests
+- regress tests which depend on scipy's `ks_2samp`
+- (internal feature) duplicate caching on the Bevavior Ophys Lims Api
 
 Previous Release Notes
 ----------------------
-
+    * `1.1.1 <https://github.com/AllenInstitute/AllenSDK/releases/tag/v1.1.1>
+    * `1.1.0 <https://github.com/AllenInstitute/AllenSDK/releases/tag/v1.1.0>`_
+    * `1.0.2 <https://github.com/AllenInstitute/AllenSDK/releases/tag/v1.0.2>`_
+    * `0.16.3 <https://github.com/AllenInstitute/AllenSDK/releases/tag/v0.16.3>`_
     * `0.16.2 <https://github.com/AllenInstitute/AllenSDK/wiki/Release-Notes-(0.16.2)>`_
     * `0.16.1 <https://github.com/AllenInstitute/AllenSDK/wiki/Release-Notes-(0.16.1)>`_
     * `0.16.0 <https://github.com/AllenInstitute/AllenSDK/wiki/Release-Notes-(0.16.0)>`_

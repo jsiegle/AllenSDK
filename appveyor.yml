@@ -1,7 +1,7 @@
 branches:
   only:
     - master
-    - internal
+    - /rc\/.+/
 
 build: false
 
@@ -20,7 +20,6 @@ environment:
 install:
   - set PATH=%MINICONDA%;%MINICONDA%\\Scripts;%PATH%
   - conda config --set always_yes yes --set changeps1 no
-  - conda install conda==4.6.14
   - conda create -q -n test-environment python=%PYTHON% pip
   - activate test-environment
   - conda install statsmodels
@@ -30,5 +29,5 @@ install:
   - pip install .
 
 test_script:
-  - py.test --cov=allensdk
+  - py.test --cov=allensdk -n 4 --durations=0
   - codecov

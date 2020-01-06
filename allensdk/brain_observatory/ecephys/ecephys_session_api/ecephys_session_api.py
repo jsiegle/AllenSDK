@@ -17,6 +17,9 @@ class EcephysSessionApi:
     def __init__(self, *args, **kwargs):
         pass
 
+    def test(self) -> bool:
+        raise NotImplementedError
+
     def get_session_start_time(self) -> datetime:
         raise NotImplementedError
 
@@ -59,7 +62,7 @@ class EcephysSessionApi:
     def get_rig_metadata(self) -> Optional[dict]:
         raise NotImplementedError
 
-    def get_eye_tracking_data(self, suppress_eye_gaze_data: bool) -> Optional[pd.DataFrame]:
+    def get_pupil_data(self, suppress_pupil_data: bool) -> Optional[pd.DataFrame]:
         raise NotImplementedError
 
     def get_metadata(self):
