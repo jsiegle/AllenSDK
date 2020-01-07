@@ -154,7 +154,6 @@ def read_spike_times_to_dictionary(
 
 def read_spike_amplitudes_to_dictionary(
     spike_amplitudes_path, spike_units_path, 
-    templates_path, spike_templates_path, inverse_whitening_matrix_path,
     local_to_global_unit_map=None,
     scale_factor=1.0
 ):
@@ -162,17 +161,7 @@ def read_spike_amplitudes_to_dictionary(
     spike_amplitudes = load_and_squeeze_npy(spike_amplitudes_path)
     spike_units = load_and_squeeze_npy(spike_units_path)
 
-    templates = load_and_squeeze_npy(templates_path)
-    spike_templates = load_and_squeeze_npy(spike_templates_path)
-    inverse_whitening_matrix = load_and_squeeze_npy(inverse_whitening_matrix_path)
-
-    for temp_idx in range(templates.shape[0]):
-        templates[temp_idx,:,:] = np.dot(
-            np.ascontiguousarray(templates[temp_idx,:,:]), 
-            np.ascontiguousarray(inverse_whitening_matrix)
-        )
-
-    scaled_amplitudes = scale_amplitudes(spike_amplitudes, templates, spike_templates, scale_factor=scale_factor)
+    scaled_amplitudes = spike_amplitudes #scale_amplitudes(spike_amplitudes, templates, spike_templates, scale_factor=scale_factor)
     return group_1d_by_unit(scaled_amplitudes, spike_units, local_to_global_unit_map)
 
 
@@ -614,7 +603,7 @@ def add_probewise_data_to_nwbfile(nwbfile, probes):
             description=probe["name"],
             sampling_rate=probe["sampling_rate"],
             lfp_sampling_rate=probe["lfp_sampling_rate"],
-            has_lfp_data=probe["lfp"] is not None
+            has_lfp_data=False,
         )
 
         channel_tables[probe["id"]] = prepare_probewise_channel_table(probe['channels'], probe_nwb_electrode_group)
@@ -625,15 +614,14 @@ def add_probewise_data_to_nwbfile(nwbfile, probes):
         spike_times.update(read_spike_times_to_dictionary(
             probe['spike_times_path'], probe['spike_clusters_file'], local_to_global_unit_map
         ))
-        mean_waveforms.update(read_waveforms_to_dictionary(
-            probe['mean_waveforms_path'], local_to_global_unit_map
-        ))
+        #mean_waveforms.update(read_waveforms_to_dictionary(
+        #    probe['mean_waveforms_path'], local_to_global_unit_map
+        #))
 
         spike_amplitudes.update(read_spike_amplitudes_to_dictionary(
-            probe["spike_amplitudes_path"], probe["spike_clusters_file"], 
-            probe["templates_path"], probe["spike_templates_path"], probe["inverse_whitening_matrix_path"],
+            probe["spike_amplitudes_path"], probe["spike_clusters_file"],
             local_to_global_unit_map=local_to_global_unit_map,
-            scale_factor=probe["amplitude_scale_factor"]
+            scale_factor=1.0
         ))
     
     electrodes_table = fill_df(pd.concat(list(channel_tables.values())))
@@ -655,12 +643,12 @@ def add_probewise_data_to_nwbfile(nwbfile, probes):
         column_description="amplitude (s) of detected spiking events"
     )
 
-    add_ragged_data_to_dynamic_table(
-        table=nwbfile.units,
-        data=mean_waveforms,
-        column_name="waveform_mean",
-        column_description="mean waveforms on peak channels (and over samples)",
-    )
+    #add_ragged_data_to_dynamic_table(
+    #    table=nwbfile.units,
+    #    data=mean_waveforms,
+    ##    column_name="waveform_mean",
+    #    column_description="mean waveforms on peak channels (and over samples)",
+    #)
 
     return nwbfile
 
@@ -716,14 +704,14 @@ def write_ecephys_nwb(
     output_path, 
     session_id, session_start_time, 
     stimulus_table_path,
-    invalid_epochs,
     probes, 
     running_speed_path,
-    session_sync_path,
-    eye_tracking_rig_geometry,
-    eye_dlc_ellipses_path,
-    eye_gaze_mapping_path,
     pool_size,
+    invalid_epochs = None,
+    session_sync_path = None,
+    eye_tracking_rig_geometry = None,
+    eye_dlc_ellipses_path = None,
+    eye_gaze_mapping_path = None,
     optotagging_table_path=None,
     session_metadata=None,
     **kwargs
@@ -741,7 +729,7 @@ def write_ecephys_nwb(
     stimulus_table = read_stimulus_table(stimulus_table_path)
     nwbfile = add_stimulus_timestamps(nwbfile, stimulus_table['start_time'].values) # TODO: patch until full timestamps are output by stim table module
     nwbfile = add_stimulus_presentations(nwbfile, stimulus_table)
-    nwbfile = add_invalid_times(nwbfile,invalid_epochs)
+    #nwbfile = add_invalid_times(nwbfile,invalid_epochs)
 
     if optotagging_table_path is not None:
         optotagging_table = pd.read_csv(optotagging_table_path)
@@ -754,25 +742,26 @@ def write_ecephys_nwb(
     add_raw_running_data_to_nwbfile(nwbfile, raw_running_data)
 
     # --- Add eye tracking ellipse fits to nwb file ---
-    eye_tracking_frame_times = su.get_synchronized_frame_times(session_sync_file=session_sync_path,
-                                                               sync_line_label_keys=Dataset.EYE_TRACKING_KEYS)
-    eye_dlc_tracking_data = read_eye_dlc_tracking_ellipses(Path(eye_dlc_ellipses_path))
+    if False:
+        eye_tracking_frame_times = su.get_synchronized_frame_times(session_sync_file=session_sync_path,
+                                                                   sync_line_label_keys=Dataset.EYE_TRACKING_KEYS)
+        eye_dlc_tracking_data = read_eye_dlc_tracking_ellipses(Path(eye_dlc_ellipses_path))
 
-    if eye_tracking_data_is_valid(eye_dlc_tracking_data=eye_dlc_tracking_data,
-                                  synced_timestamps=eye_tracking_frame_times):
-        add_eye_tracking_ellipse_fit_data_to_nwbfile(nwbfile,
-                                                     eye_dlc_tracking_data=eye_dlc_tracking_data,
-                                                     synced_timestamps=eye_tracking_frame_times)
+        if eye_tracking_data_is_valid(eye_dlc_tracking_data=eye_dlc_tracking_data,
+                                      synced_timestamps=eye_tracking_frame_times):
+            add_eye_tracking_ellipse_fit_data_to_nwbfile(nwbfile,
+                                                         eye_dlc_tracking_data=eye_dlc_tracking_data,
+                                                         synced_timestamps=eye_tracking_frame_times)
 
-        # --- Append eye tracking rig geometry info to nwb file (with eye tracking) ---
-        append_eye_tracking_rig_geometry_data_to_nwbfile(nwbfile,
-                                                         eye_tracking_rig_geometry=eye_tracking_rig_geometry)
+            # --- Append eye tracking rig geometry info to nwb file (with eye tracking) ---
+            append_eye_tracking_rig_geometry_data_to_nwbfile(nwbfile,
+                                                             eye_tracking_rig_geometry=eye_tracking_rig_geometry)
 
-        # --- Add gaze mapped positions to nwb file ---
-        if eye_gaze_mapping_path:
-            eye_gaze_data = read_eye_gaze_mappings(Path(eye_gaze_mapping_path))
-            add_eye_gaze_mapping_data_to_nwbfile(nwbfile,
-                                                 eye_gaze_data=eye_gaze_data)
+            # --- Add gaze mapped positions to nwb file ---
+            if eye_gaze_mapping_path:
+                eye_gaze_data = read_eye_gaze_mappings(Path(eye_gaze_mapping_path))
+                add_eye_gaze_mapping_data_to_nwbfile(nwbfile,
+                                                     eye_gaze_data=eye_gaze_data)
 
     Manifest.safe_make_parent_dirs(output_path)
     io = pynwb.NWBHDF5IO(output_path, mode='w')
@@ -780,8 +769,10 @@ def write_ecephys_nwb(
     io.write(nwbfile)
     io.close()
 
-    probes_with_lfp = [p for p in probes if p["lfp"] is not None]
-    probe_outputs = write_probewise_lfp_files(probes_with_lfp, session_start_time, pool_size=pool_size)
+    #probes_with_lfp = [p for p in probes if p["lfp"] is not None]
+    #probe_outputs = write_probewise_lfp_files(probes_with_lfp, session_start_time, pool_size=pool_size)
+
+    probe_outputs =[]
 
     return {
         'nwb_path': output_path,

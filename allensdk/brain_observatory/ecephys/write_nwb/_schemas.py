@@ -24,10 +24,10 @@ class Channel(RaisingSchema):
     probe_id = Int(required=True)
     valid_data = Boolean(required=True)
     local_index = Int(required=True)
-    probe_vertical_position = Int(required=True)
-    probe_horizontal_position = Int(required=True)
-    structure_id = Int(required=True, allow_none=True)
-    structure_acronym = String(required=True, allow_none=True)
+    probe_vertical_position = Int(required=False)
+    probe_horizontal_position = Int(required=False)
+    structure_id = Int(required=False, allow_none=True)
+    structure_acronym = String(required=False, allow_none=True)
 
 
 class Unit(RaisingSchema):
@@ -42,28 +42,28 @@ class Unit(RaisingSchema):
         help="within-probe identifier of this unit",
     )
     quality = String(required=True)
-    firing_rate = Float(required=True)
-    snr = Float(required=True, allow_none=True)
-    isi_violations = Float(required=True)
-    presence_ratio = Float(required=True)
-    amplitude_cutoff = Float(required=True)
-    isolation_distance = Float(required=True, allow_none=True)
-    l_ratio = Float(required=True, allow_none=True)
-    d_prime = Float(required=True, allow_none=True)
-    nn_hit_rate = Float(required=True, allow_none=True)
-    nn_miss_rate = Float(required=True, allow_none=True)
-    max_drift = Float(required=True, allow_none=True)
-    cumulative_drift = Float(required=True, allow_none=True)
-    silhouette_score = Float(required=True, allow_none=True)
-    waveform_duration = Float(required=True, allow_none=True)
-    waveform_halfwidth = Float(required=True, allow_none=True)
-    PT_ratio = Float(required=True, allow_none=True)
-    repolarization_slope = Float(required=True, allow_none=True)
-    recovery_slope = Float(required=True, allow_none=True)
-    amplitude = Float(required=True, allow_none=True)
-    spread = Float(required=True, allow_none=True)
-    velocity_above = Float(required=True, allow_none=True)
-    velocity_below = Float(required=True, allow_none=True)
+    firing_rate = Float(required=False)
+    snr = Float(required=False, allow_none=True)
+    isi_violations = Float(required=False)
+    presence_ratio = Float(required=False)
+    amplitude_cutoff = Float(required=False)
+    isolation_distance = Float(required=False, allow_none=True)
+    l_ratio = Float(required=False, allow_none=True)
+    d_prime = Float(required=False, allow_none=True)
+    nn_hit_rate = Float(required=False, allow_none=True)
+    nn_miss_rate = Float(required=False, allow_none=True)
+    max_drift = Float(required=False, allow_none=True)
+    cumulative_drift = Float(required=False, allow_none=True)
+    silhouette_score = Float(required=False, allow_none=True)
+    waveform_duration = Float(required=False, allow_none=True)
+    waveform_halfwidth = Float(required=False, allow_none=True)
+    PT_ratio = Float(required=False, allow_none=False)
+    repolarization_slope = Float(required=False, allow_none=True)
+    recovery_slope = Float(required=False, allow_none=True)
+    amplitude = Float(required=False, allow_none=True)
+    spread = Float(required=False, allow_none=True)
+    velocity_above = Float(required=False, allow_none=True)
+    velocity_below = Float(required=False, allow_none=True)
 
 
 class Lfp(RaisingSchema):
@@ -78,33 +78,14 @@ class Probe(RaisingSchema):
     name = String(required=True)
     spike_times_path = String(required=True, validate=check_read_access)
     spike_clusters_file = String(required=True, validate=check_read_access)
-    mean_waveforms_path = String(required=True, validate=check_read_access)
     channels = Nested(Channel, many=True, required=True)
     units = Nested(Unit, many=True, required=True)
-    lfp = Nested(Lfp, many=False, required=True, allow_none=True)
-    csd_path = String(required=True,
-                      validate=check_read_access,
-                      allow_none=True,
-                      help="path to h5 file containing calculated current source density")
     sampling_rate = Float(default=30000.0, help="sampling rate (Hz, master clock) at which raw data were acquired on this probe")
     lfp_sampling_rate = Float(default=2500.0, allow_none=True, help="sampling rate of LFP data on this probe")
     temporal_subsampling_factor = Float(default=2.0, allow_none=True, help="subsampling factor applied to lfp data for this probe (across time)")
     spike_amplitudes_path = String(validate=check_read_access, 
         help="path to npy file containing scale factor applied to the kilosort template used to extract each spike"
     )
-    spike_templates_path = String(validate=check_read_access, 
-        help="path to file associating each spike with a kilosort template"    
-    )
-    templates_path = String(validate=check_read_access,
-        help="path to file contianing an (nTemplates)x(nSamples)x(nUnits) array of kilosort templates"
-    )
-    inverse_whitening_matrix_path = String(validate=check_read_access,
-        help="Kilosort templates are whitened. In order to use them for scaling spike amplitudes to volts, we need to remove the whitening"
-    )
-    amplitude_scale_factor = Float(default=0.195e-6, 
-        help="amplitude scale factor converting raw amplitudes to Volts. Default converts from bits -> uV -> V"
-    )
-
 
 class InvalidEpoch(RaisingSchema):
     id = Int(required=True)
@@ -150,7 +131,7 @@ class InputSchema(ArgSchema):
     invalid_epochs = Nested(
         InvalidEpoch,
         many=True,
-        required=True,
+        required=False,
         help="epochs with invalid data"
     )
     probes = Nested(
@@ -164,16 +145,16 @@ class InputSchema(ArgSchema):
         help="data collected about the running behavior of the experiment's subject",
     )
     session_sync_path = String(
-        required=True,
+        required=False,
         validate=check_read_access,
         help="Path to an h5 experiment session sync file (*.sync). This file relates events from different acquisition modalities to one another in time."
     )
     eye_tracking_rig_geometry = Dict(
-        required=True,
+        required=False,
         help="Mapping containing information about session rig geometry used for eye gaze mapping."
     )
     eye_dlc_ellipses_path = String(
-        required=True,
+        required=False,
         validate=check_read_access,
         help="h5 filepath containing raw ellipse fits produced by Deep Lab Cuts of subject eye, pupil, and corneal reflections during experiment"
     )
