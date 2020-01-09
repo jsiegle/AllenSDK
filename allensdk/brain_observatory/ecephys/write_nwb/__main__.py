@@ -706,6 +706,7 @@ def write_ecephys_nwb(
     stimulus_table_path,
     probes, 
     running_speed_path,
+    session_metadata,
     pool_size,
     invalid_epochs = None,
     session_sync_path = None,
@@ -713,7 +714,6 @@ def write_ecephys_nwb(
     eye_dlc_ellipses_path = None,
     eye_gaze_mapping_path = None,
     optotagging_table_path=None,
-    session_metadata=None,
     **kwargs
 ):
 
