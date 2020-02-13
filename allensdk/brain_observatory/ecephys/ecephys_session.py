@@ -574,6 +574,7 @@ flipVert
         stimulus_presentation_ids,
         unit_ids,
         binarize=False,
+        use_amplitudes=False,
         dtype=None,
         large_bin_size_threshold=0.001,
         time_domain_callback=None
@@ -592,6 +593,9 @@ flipVert
         binarize : bool, optional
             If true, all counts greater than 0 will be treated as 1. This results in lower storage overhead,
             but is only reasonable if bin sizes are fine (<= 1 millisecond).
+        use_amplitudes : bool, optional
+            If true, spike amplitudes will be returned in place of spike counts
+            Used for ophys event analysis
         large_bin_size_threshold : float, optional
             If binarize is True and the largest bin width is greater than this value, a warning will be emitted.
         time_domain_callback : callable, optional
@@ -637,12 +641,20 @@ flipVert
             warnings.warn(f"You've specified some overlapping time intervals between neighboring rows: {overlapping}, "
                           f"with a maximum overlap of {np.abs(np.min(time_diffs))} seconds.")
 
-        tiled_data = build_spike_histogram(
-            domain, self.spike_times, units.index.values, dtype=dtype, binarize=binarize
-        )
+        if use_amplitudes:
+
+            tiled_data = build_event_amplitude_histogram(
+                domain, self.spike_times, self.spike_amplitudes, units.index.values, dtype=dtype, binarize=binarize
+            )
+            name = 'spike_amplitudes'
+        else:
+            tiled_data = build_spike_histogram(
+                domain, self.spike_times, units.index.values, dtype=dtype, binarize=binarize
+            )
+            name = 'spike_counts'
 
         tiled_data = xr.DataArray(
-            name='spike_counts',
+            name=name,
             data=tiled_data,
             coords={
                 'stimulus_presentation_id': stimulus_presentations.index.values,
@@ -654,7 +666,7 @@ flipVert
 
         return tiled_data
 
-    def presentationwise_spike_times(self, stimulus_presentation_ids=None, unit_ids=None):
+    def presentationwise_spike_times(self, stimulus_presentation_ids=None, unit_ids=None, return_amplitudes=False):
         ''' Produce a table associating spike times with units and stimulus presentations
 
         Parameters
@@ -663,6 +675,8 @@ flipVert
             Filter to these stimulus presentations
         unit_ids : array-like
             Filter to these units
+        return_amplitudes : bool, optional
+            If True, add a column with spike (event) amplitudes
 
         Returns
         -------
@@ -688,6 +702,8 @@ flipVert
         presentation_ids = []
         unit_ids = []
         spike_times = []
+        if return_amplitudes:
+            spike_amplitudes = []
 
         for ii, unit_id in enumerate(units.index.values):
             data = self.spike_times[unit_id]
@@ -701,25 +717,41 @@ flipVert
             index_valid = index_valid[sorder]
             data = data[sorder]
 
+            if return_amplitudes:
+                amplitudes = self.spike_amplitudes[unit_id]
+                amplitudes = amplitudes[sorder]
+
             changes = np.where(np.ediff1d(presentations, to_begin=1, to_end=1))[0]
             for ii, jj in zip(changes[:-1], changes[1:]):
                 values = data[ii:jj][index_valid[ii:jj]]
+                if return_amplitudes:
+                    values2 = amplitudes[ii:jj][index_valid[ii:jj]]
+
+                    assert len(values) == len(values2)
+
                 if values.size == 0:
                     continue
 
                 unit_ids.append(np.zeros([values.size]) + unit_id)
                 presentation_ids.append(np.zeros([values.size]) + presentations[ii])
                 spike_times.append(values)
+                if return_amplitudes:
+                    spike_amplitudes.append(values2)
+                    assert len(spike_amplitudes) == len(spike_times)
 
         if not spike_times:
             # If there are no units firing during the given stimulus return an empty dataframe
             return pd.DataFrame(columns=['spike_times', 'stimulus_presentation',
                                          'unit_id', 'time_since_stimulus_presentation_onset'])
 
+
         spike_df = pd.DataFrame({
             'stimulus_presentation_id': np.concatenate(presentation_ids).astype(int),
             'unit_id': np.concatenate(unit_ids).astype(int)
         }, index=pd.Index(np.concatenate(spike_times), name='spike_time'))
+
+        if return_amplitudes:
+            spike_df['spike_amplitude'] = np.concatenate(spike_amplitudes)
 
         # Add time since stimulus presentation onset
         onset_times = self._filter_owned_df(
@@ -733,7 +765,7 @@ flipVert
         spikes_with_onset.drop(columns=["start_time"], inplace=True)
         return spikes_with_onset
 
-    def conditionwise_spike_statistics(self, stimulus_presentation_ids=None, unit_ids=None, use_rates=False):
+    def conditionwise_spike_statistics(self, stimulus_presentation_ids=None, unit_ids=None, use_rates=False, use_amplitudes=False):
         """ Produce summary statistics for each distinct stimulus condition
 
         Parameters
@@ -744,6 +776,8 @@ flipVert
             identifies units whose spikes will be considered
         use_rates : bool, optional
             If True, use firing rates. If False, use spike counts.
+        use_amplitudes : bool, optional
+            If True, use mean event amplitudes in calculation
 
         Returns
         -------
@@ -759,7 +793,7 @@ flipVert
         presentations = self.stimulus_presentations.loc[stimulus_presentation_ids, ["stimulus_condition_id", "duration"]]
 
         spikes = self.presentationwise_spike_times(
-            stimulus_presentation_ids=stimulus_presentation_ids, unit_ids=unit_ids
+            stimulus_presentation_ids=stimulus_presentation_ids, unit_ids=unit_ids, return_amplitudes=use_amplitudes
         )
 
         if spikes.empty:
@@ -771,7 +805,11 @@ flipVert
         else:
             spike_counts = spikes.copy()
             spike_counts["spike_count"] = np.zeros(spike_counts.shape[0])
-            spike_counts = spike_counts.groupby(["stimulus_presentation_id", "unit_id"]).count()
+
+            if not use_amplitudes:
+                spike_counts = spike_counts.groupby(["stimulus_presentation_id", "unit_id"]).count()
+            else:
+                spike_counts = spike_counts.groupby(["stimulus_presentation_id", "unit_id"]).mean()
             unit_ids = unit_ids if unit_ids is not None else spikes['unit_id'].unique()  # If not explicity stated get unit ids from spikes table.
             spike_counts = spike_counts.reindex(pd.MultiIndex.from_product([stimulus_presentation_ids,
                                                                             unit_ids],
@@ -781,13 +819,17 @@ flipVert
         sp = pd.merge(spike_counts, presentations, left_on="stimulus_presentation_id", right_index=True, how="left")
         sp.reset_index(inplace=True)
 
-        if use_rates:
-            sp["spike_rate"] = sp["spike_count"] / sp["duration"]
-            sp.drop(columns=["spike_count"], inplace=True)
-            extractor = _extract_summary_rate_statistics
+        if not use_amplitudes:
+            if use_rates:
+                sp["spike_rate"] = sp["spike_count"] / sp["duration"]
+                sp.drop(columns=["spike_count"], inplace=True)
+                extractor = _extract_summary_rate_statistics
+            else:
+                sp.drop(columns=["duration"])
+                extractor = _extract_summary_count_statistics
         else:
             sp.drop(columns=["duration"])
-            extractor = _extract_summary_count_statistics
+            extractor = _extract_summary_amplitude_statistics
 
         summary = []
         for ind, gr in sp.groupby(["stimulus_condition_id", "unit_id"]):
@@ -1111,6 +1153,39 @@ def build_spike_histogram(time_domain, spike_times, unit_ids, dtype=None, binari
     return tiled_data
 
 
+def build_event_amplitude_histogram(time_domain, spike_times, spike_amplitudes, unit_ids, dtype=np.float, binarize=False):
+
+    time_domain = np.array(time_domain)
+    unit_ids = np.array(unit_ids)
+
+    tiled_data = np.zeros(
+        (time_domain.shape[0], time_domain.shape[1] - 1, unit_ids.size),
+        dtype=dtype
+    )
+
+    starts = time_domain[:, :-1]
+    ends = time_domain[:, 1:]
+
+    def get_max_amp(amplitudes, start, end):
+
+        if (end - start) > 0:
+            return np.max(amplitudes[start:end])
+        else:
+            return 0
+
+    for ii, unit_id in enumerate(unit_ids):
+        data = np.array(spike_times[unit_id])
+
+        start_positions = np.searchsorted(data, starts.flat)
+        end_positions = np.searchsorted(data, ends.flat, side="right")
+        amplitudes = [get_max_amp(spike_amplitudes[unit_id], start, end) for (start, end) 
+                        in zip(start_positions, end_positions)]
+
+        tiled_data[:, :, ii].flat = np.array(amplitudes)
+
+    return tiled_data
+
+
 def build_time_window_domain(bin_edges, offsets, callback=None):
     callback = (lambda x: x) if callback is None else callback
     domain = np.tile(bin_edges[None, :], (len(offsets), 1))
@@ -1201,6 +1276,16 @@ def _extract_summary_count_statistics(index, group):
         "spike_mean": np.mean(group["spike_count"].values),
         "spike_std": np.std(group["spike_count"].values, ddof=1),
         "spike_sem": scipy.stats.sem(group["spike_count"].values)
+    }
+
+def _extract_summary_amplitude_statistics(index, group):
+    return {
+        "stimulus_condition_id": index[0],
+        "unit_id": index[1],
+        "stimulus_presentation_count": group.shape[0],
+        "spike_mean": np.mean(group["spike_amplitude"].values),
+        "spike_std": np.std(group["spike_amplitude"].values, ddof=1),
+        "spike_sem": scipy.stats.sem(group["spike_amplitude"].values)
     }
 
 
