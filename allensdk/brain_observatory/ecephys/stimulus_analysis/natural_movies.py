@@ -38,8 +38,8 @@ class NaturalMovies(StimulusAnalysis):
     TODO: Need to find a default trial_duration otherwise class will fail
     """
 
-    def __init__(self, ecephys_session, trial_duration=None, **kwargs):
-        super(NaturalMovies, self).__init__(ecephys_session, trial_duration=trial_duration, **kwargs)
+    def __init__(self, ecephys_session, is_ophys_session=False, trial_duration=None, **kwargs):
+        super(NaturalMovies, self).__init__(ecephys_session, is_ophys_session=is_ophys_session, trial_duration=trial_duration, **kwargs)
 
         self._metrics = None
 

@@ -16,7 +16,7 @@ import warnings
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 
 class StimulusAnalysis(object):
-    def __init__(self, ecephys_session, trial_duration=None, **kwargs):
+    def __init__(self, ecephys_session, is_phys_session=False, trial_duration=None, **kwargs):
         """
         :param ecephys_session: an EcephySession object or path to ece nwb file.
         """
@@ -58,8 +58,17 @@ class StimulusAnalysis(object):
         self._block_stops = None
 
         # self._module_name = None  # TODO: Remove, .name() should be hardcoded
+        if is_ophys_session:
+            self._default_bin_resolution = 0.033
+            self._bin_offset = 0.066
+            self._use_amplitudes = True
+        else:
+            self._default_bin_resolution = 0.002
+            self._bin_offset = 0.0
+            self._use_amplitudes = False
 
-        self._psth_resolution = kwargs.get('psth_resolution', 0.001)
+        self._psth_resolution = kwargs.get('psth_resolution', 
+                            self._default_bin_resolution)
 
         # Duration a sponteous stimulus should last for before it gets included in the analysis.
         self._spontaneous_threshold = kwargs.get('spontaneous_threshold', 100.0)
@@ -202,9 +211,16 @@ class StimulusAnalysis(object):
         # Used by sweep_p_events for creating null dist.
         # TODO: This may not be need anymore? Ask the scientists if sweep_p_events will be required in the future.
         if self._stim_table_spontaneous is None:
-            stim_table = self.ecephys_session.get_stimulus_table(self.known_spontaneous_keys)
-            # TODO: If duration does not exists in stim_table create it from stop and start times
-            self._stim_table_spontaneous = stim_table[stim_table['duration'] > self._spontaneous_threshold]
+            spont_table = self.ecephys_session.get_stimulus_table(self.known_spontaneous_keys)
+            spont_table = spont_table[spont_table['duration'] > self._spontaneous_threshold]
+
+            spont_table = spont_table[(spont_table.start_time > self.stim_table.start_time.min()) &
+                          (spont_table.start_time < self.stim_table.start_time.max())]
+
+            if len(spont_table) == 0:
+                spont_table = spont_table.loc[[0]] # just use the first one
+
+            self._stim_table_spontaneous = spont_table
 
         return self._stim_table_spontaneous
 
@@ -236,7 +252,9 @@ class StimulusAnalysis(object):
 
             # get the spike-counts for every stimulus_presentation_id
             dataset = self.ecephys_session.presentationwise_spike_counts(
-                bin_edges=np.arange(0, self.trial_duration, self._psth_resolution),
+                bin_edges=np.arange(0 + self._bin_offset, 
+                                    self.trial_duration + self._bin_offset, 
+                                    self._psth_resolution),
                 stimulus_presentation_ids=self.stim_table.index.values,
                 unit_ids=self.unit_ids
             )
@@ -269,7 +287,9 @@ class StimulusAnalysis(object):
         """
         if self._conditionwise_statistics is None:
             self._conditionwise_statistics = self.ecephys_session.conditionwise_spike_statistics(
-                self.stim_table.index.values, self.unit_ids)
+                self.stim_table.index.values, 
+                self.unit_ids, 
+                use_amplitudes=self._use_amplitudes)
 
         return self._conditionwise_statistics
 
@@ -287,7 +307,8 @@ class StimulusAnalysis(object):
         if self._presentationwise_spikes is None:
             self._presentationwise_spikes = self.ecephys_session.presentationwise_spike_times(
                 stimulus_presentation_ids=self.stim_table.index.values,
-                unit_ids=self.unit_ids
+                unit_ids=self.unit_ids,
+                return_amplitudes = self._use_amplitudes
             )
 
         return self._presentationwise_spikes
@@ -308,9 +329,10 @@ class StimulusAnalysis(object):
             # for each presentation_id and unit_id get the spike_counts across the entire duration. Since there is only
             # a single bin we can drop time_relative_to_stimulus_onset.
             df = self.ecephys_session.presentationwise_spike_counts(
-                bin_edges=np.array([0.0, self.trial_duration]),
+                bin_edges=np.array([0.0 + self._bin_offset, self.trial_duration + self._bin_offset]),
                 stimulus_presentation_ids=self.stim_table.index.values,
-                unit_ids=self.unit_ids
+                unit_ids=self.unit_ids,
+                use_amplitudes=self._use_amplitudes
             ).to_dataframe().reset_index(level='time_relative_to_stimulus_onset', drop=True)
 
             # left join table with stimulus_condition_id and mean running_speed joined on stimulus_presentation_id
@@ -363,72 +385,150 @@ class StimulusAnalysis(object):
                                                          [get_velocity(i) for i in self.stim_table.index.values]
                                                 }).rename_axis('stimulus_presentation_id')
 
-            # TODO: The below is equivelent but uses numpy vectorization, profile to see if it's worth swapping out.
-            # stim_times = np.zeros(len(self.stim_table)*2, dtype=np.float64)
-            # stim_times[::2] = self.stim_table['start_time'].values
-            # stim_times[1::2] = self.stim_table['stop_time'].values
-            # sampled_indicies = np.where((self._ecephys_session.running_speed.start_time >= stim_times[0])
-            #                             & (self._ecephys_session.running_speed.start_time < stim_times[-1]))[0]
-            # relevant_dxtimes = self._ecephys_session.running_speed.start_time[sampled_indicies]
-            # relevant_dxcms = self._ecephys_session.running_speed.velocity[sampled_indicies]
-            #
-            # indices = np.searchsorted(stim_times, relevant_dxtimes.values, side='right')
-            # rs_tmp_df = pd.DataFrame({'running_speed': relevant_dxcms, 'stim_indicies': indices})
-            #
-            # # get averaged running speed for each stimulus
-            # rs_tmp_df = rs_tmp_df.groupby('stim_indicies').agg('mean')
-            # self._running_speed = rs_tmp_df.set_index(self.stim_table.index)
-
         return self._running_speed
 
-    '''
-    @property
-    def sweep_p_values(self):
-        """mean sweeps taken from randomized 'spontaneous' trial data."""
-        if self._sweep_p_values is None:
-            self._sweep_p_values = self._calc_sweep_p_values()
-
-        return self._sweep_p_values
     
-    def _calc_sweep_p_values(self, n_samples=10000, step_size=0.0001, offset=0.33):
-        """ Calculates the probability, for each unit and stimulus presentation, that the number of spikes emitted by 
-        that unit during that presentation could have been produced by that unit's spontaneous activity. This is 
-        implemented as a permutation test using spontaneous activity (gray screen) periods as input data.
+    @property
+    def responsiveness_vs_spontaneous(self):
+        """baseline taken from randomized 'spontaneous' trial data."""
+        if self._responsiveness_vs_spontaneous is None:
+            self._responsiveness_vs_spontaneous = self._calc_spont_p_values()
+
+        return self._responsiveness_vs_spontaneous
+
+    @property
+    def responsiveness_vs_shuffle(self):
+        """baseline taken from data with randomly shuffled start times."""
+        if self._responsiveness_vs_shuffle is None:
+            self._responsiveness_vs_shuffle = self._calc_shuffle_p_values()
+
+        return self._responsiveness_vs_shuffle
+    
+    def _calc_spont_p_values(self, n_samples=1000):
+        """ Calculates the fraction of responses to each unit's preferred condition
+        that are above a 95% of similar intervals during spontaneous activity.
 
         Parameters
         ==========
+        n_samples : number of spontaneous intervals to use
+
 
         Returns
         =======
-        sweep_p_values : pd.DataFrame
-            Each row is a stimulus presentation. Each column is a unit. Cells contain the probability that the 
-            unit's spontaneous activity could account for its observed spiking activity during that presentation
-            (uncorrected for multiple comparisons).
+        responsiveness_vs_spontaneous : pd.DataFrame
+            index: units
 
         """
-        # TODO: Code is currently a speed bottle-neck and could probably be improved.
-        # Recreate the mean-sweep-table but using randomly selected 'spontaneuous' stimuli.
-        shuffled_mean = np.empty((self.unit_count, n_samples))
-        #print(self.stim_table_spontaneous)
-        #exit()
-        idx = np.random.choice(np.arange(self.stim_table_spontaneous['start_time'].iloc[0],
-                                         self.stim_table_spontaneous['stop_time'].iloc[0],
-                                         step_size), n_samples)  # TODO: what step size for np.arange?
-        for shuf in range(n_samples):
-            for i, v in enumerate(self.spikes.keys()):
-                spikes = self.spikes[v]
-                shuffled_mean[i, shuf] = len(spikes[(spikes > idx[shuf]) & (spikes < (idx[shuf] + offset))])
 
-        sweep_p_values = pd.DataFrame(index=self.stim_table.index.values, columns=self.sweep_events.columns)
-        for i, unit_id in enumerate(self.spikes.keys()):
-            subset = self.mean_sweep_events[unit_id].values
-            null_dist_mat = np.tile(shuffled_mean[i, :], reps=(len(subset), 1))
-            actual_is_less = subset.reshape(len(subset), 1) <= null_dist_mat
-            p_values = np.mean(actual_is_less, axis=1)
-            sweep_p_values[unit_id] = p_values
+        n_baseline = 1000
 
-        return sweep_p_values
-    '''
+        def baseline_shift_range(arr, amount):
+            return np.apply_along_axis(lambda x : x + (np.random.rand(1))*amount,1,arr) 
+
+        bin_edges = np.arange(0 + self._bin_offset, 
+                              self._trial_duration + self._bin_offset,
+                              self._default_bin_resolution)
+
+        spont_start = self.stim_table_spontaneous.iloc[0].start_time
+        spont_end = self.stim_table_spontaneous.iloc[0].stop_time
+        spont_trial_inds = np.ones((n_samples,))*self.stim_table_spontaneous.index.values[0]
+
+        baseline_shift_callback = lambda arr: baseline_shift_range(arr, spont_end-spont_start)
+
+    
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+
+            responses_spont = session.presentationwise_spike_counts(bin_edges, 
+                                                  stimulus_presentation_ids = spont_trial_inds,
+                                                  unit_ids = self.unit_ids,
+                                                  use_amplitudes = self._use_amplitudes,
+                                                  time_domain_callback=baseline_shift_callback)
+
+            responses = session.presentationwise_spike_counts(bin_edges, 
+                                                          stimulus_presentation_ids = self.stim_table.index.values,
+                                                          unit_ids = self.unit_ids,
+                                                          use_amplitudes = self._use_amplitudes
+                                                          )
+            
+            resp_mean = responses.mean(dim='time_relative_to_stimulus_onset')
+            resp_spont_mean = responses_spont.mean(dim='time_relative_to_stimulus_onset')
+            
+            def get_sig_fraction(unit_id):
+            
+                resp_for_unit = resp_mean.sel(unit_id=unit_id).data
+                spont_for_unit = resp_spont_mean.sel(unit_id=unit_id).data
+                
+                mask = self.stim_table.stimulus_condition_id == self._get_preferred_condition(unit_id)
+                
+                sig_level_spont = np.quantile(spont_for_unit, 0.95)
+                sig_fraction_spont = np.sum(resp_for_unit[mask] > sig_level_spont) / np.sum(mask)
+            
+                return sig_fraction_spont
+
+            sig_fraction = [get_sig_fraction(unit_id) for unit_id in self.unit_ids]
+
+        return pd.DataFrame(index={'unit_id' : self.unit_ids}, 
+                            data={'sig_fraction' : sig_fraction})
+    
+    def _calc_shuffle_p_values(self, shift_s=1000):
+        """ Calculates the fraction of responses to each unit's preferred condition
+        that are above a 95% of similar intervals for shuffled trial times.
+
+        Parameters
+        ==========
+        shift_s : window for uniform trial start time shift
+
+
+        Returns
+        =======
+        responsiveness_vs_spontaneous : pd.DataFrame
+            index: units
+
+        """
+
+        def random_start_time_shift(arr, amount):
+            return np.apply_along_axis(lambda x : x + (np.random.rand(1)-0.5)*amount,1,arr) 
+
+        bin_edges = np.arange(0 + self._bin_offset, 
+                              self._trial_duration + self._bin_offset,
+                              self._default_bin_resolution)
+
+        shuffle_start_time_callback = lambda arr: random_start_time_shift(arr, shift_s)                       
+    
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            responses_shuff = session.presentationwise_spike_counts(bin_edges, 
+                                                          stimulus_presentation_ids = self.stim_table.index.values,
+                                                          unit_ids = self.unit_ids,
+                                                          use_amplitudes = self._use_amplitudes,
+                                                          time_domain_callback=shuffle_start_time_callback)
+
+            responses = session.presentationwise_spike_counts(bin_edges, 
+                                                          stimulus_presentation_ids = self.stim_table.index.values,
+                                                          unit_ids = self.unit_ids,
+                                                          use_amplitudes = self._use_amplitudes
+                                                          )
+            
+            resp_mean = responses.mean(dim='time_relative_to_stimulus_onset')
+            resp_shuf_mean = responses_shuff.mean(dim='time_relative_to_stimulus_onset')
+            
+            def get_sig_fraction(unit_id):
+            
+                resp_for_unit = resp_mean.sel(unit_id=unit_id).data
+                shuffle_for_unit = resp_shuf_mean.sel(unit_id=unit_id).data
+                
+                mask = self.stim_table.stimulus_condition_id == self._get_preferred_condition(unit_id)
+                
+                sig_level_shuffle = np.quantile(shuffle_for_unit, 0.95)
+                sig_fraction_shuffle = np.sum(resp_for_unit[mask] > sig_level_shuffle) / np.sum(mask)
+
+                return sig_fraction_shuffle
+
+            sig_fraction = [get_sig_fraction(unit_id) for unit_id in self.unit_ids]
+
+        return pd.DataFrame(index={'unit_id' : self.unit_ids}, 
+                            data={'sig_fraction' : sig_fraction})
 
     @property
     def metrics(self):
@@ -489,7 +589,7 @@ class StimulusAnalysis(object):
     def _get_lifetime_sparseness(self, unit_id):
         """Computes lifetime sparseness of responses for one unit"""
         df = self.conditionwise_statistics.drop(index=self.null_condition, level=1)
-        responses = df.loc[unit_id]['spike_count'].values
+        responses = df.loc[unit_id]['spike_mean'].values
 
         return lifetime_sparseness(responses)
 

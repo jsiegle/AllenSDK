@@ -809,7 +809,8 @@ flipVert
             if not use_amplitudes:
                 spike_counts = spike_counts.groupby(["stimulus_presentation_id", "unit_id"]).count()
             else:
-                spike_counts = spike_counts.groupby(["stimulus_presentation_id", "unit_id"]).mean()
+                spike_counts = spike_counts.groupby(["stimulus_presentation_id", "unit_id"]).sum()
+            
             unit_ids = unit_ids if unit_ids is not None else spikes['unit_id'].unique()  # If not explicity stated get unit ids from spikes table.
             spike_counts = spike_counts.reindex(pd.MultiIndex.from_product([stimulus_presentation_ids,
                                                                             unit_ids],
@@ -1166,10 +1167,10 @@ def build_event_amplitude_histogram(time_domain, spike_times, spike_amplitudes, 
     starts = time_domain[:, :-1]
     ends = time_domain[:, 1:]
 
-    def get_max_amp(amplitudes, start, end):
+    def get_total_amplitude(amplitudes, start, end):
 
         if (end - start) > 0:
-            return np.max(amplitudes[start:end])
+            return np.sum(amplitudes[start:end])
         else:
             return 0
 
@@ -1178,7 +1179,7 @@ def build_event_amplitude_histogram(time_domain, spike_times, spike_amplitudes, 
 
         start_positions = np.searchsorted(data, starts.flat)
         end_positions = np.searchsorted(data, ends.flat, side="right")
-        amplitudes = [get_max_amp(spike_amplitudes[unit_id], start, end) for (start, end) 
+        amplitudes = [get_total_amplitude(spike_amplitudes[unit_id], start, end) for (start, end) 
                         in zip(start_positions, end_positions)]
 
         tiled_data[:, :, ii].flat = np.array(amplitudes)

@@ -34,8 +34,8 @@ class DotMotion(StimulusAnalysis):
         metrics_table_df = dm_analysis.metrics()
 
     """
-    def __init__(self, ecephys_session, col_dir='Dir', col_speeds='Speed', trial_duration=1.0, **kwargs):
-        super(DotMotion, self).__init__(ecephys_session, trial_duration=trial_duration, **kwargs)
+    def __init__(self, ecephys_session, is_ophys_session=False, col_dir='Dir', col_speeds='Speed', trial_duration=1.0, **kwargs):
+        super(DotMotion, self).__init__(ecephys_session, is_ophys_session=is_ophys_session, trial_duration=trial_duration, **kwargs)
 
         self._dirvals = None
         self._number_dir = None

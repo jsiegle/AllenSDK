@@ -40,9 +40,9 @@ class DriftingGratings(StimulusAnalysis):
         metrics_table_df = dg_analysis.metrics()
 
     """
-    def __init__(self, ecephys_session, col_ori='orientation', col_tf='temporal_frequency', col_contrast='contrast',
+    def __init__(self, ecephys_session, is_ophys_session=False, col_ori='orientation', col_tf='temporal_frequency', col_contrast='contrast',
                  trial_duration=2.0, **kwargs):
-        super(DriftingGratings, self).__init__(ecephys_session, trial_duration=trial_duration, **kwargs)
+        super(DriftingGratings, self).__init__(ecephys_session, is_ophys_session=is_ophys_session, trial_duration=trial_duration, **kwargs)
 
         self._metrics = None
 
@@ -211,6 +211,8 @@ class DriftingGratings(StimulusAnalysis):
                 metrics_df['fano_dg'] = [self._get_fano_factor(unit, self._get_preferred_condition(unit))
                                          for unit in unit_ids]
                 metrics_df['lifetime_sparseness_dg'] = [self._get_lifetime_sparseness(unit) for unit in unit_ids]
+                metrics_df['sig_fraction_shuffle_dg'] = [self.responsiveness_vs_shuffle.loc[unit] for unit in unit_ids]
+                metrics_df['sig_fraction_spont_dg'] = [self.responsiveness_vs_spontaneous.loc[unit] for unit in unit_ids]
                 metrics_df.loc[:, ['run_pval_dg', 'run_mod_dg']] = [
                     self._get_running_modulation(unit, self._get_preferred_condition(unit)) for unit in unit_ids]
 

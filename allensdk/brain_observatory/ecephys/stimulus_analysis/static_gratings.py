@@ -38,9 +38,9 @@ class StaticGratings(StimulusAnalysis):
 
     """
 
-    def __init__(self, ecephys_session, col_ori='orientation', col_sf='spatial_frequency', col_phase='phase',
+    def __init__(self, ecephys_session, is_ophys_session=False, col_ori='orientation', col_sf='spatial_frequency', col_phase='phase',
                  trial_duration=0.25, **kwargs):
-        super(StaticGratings, self).__init__(ecephys_session, trial_duration=trial_duration, **kwargs)
+        super(StaticGratings, self).__init__(ecephys_session, is_ophys_session=is_ophys_session, trial_duration=trial_duration, **kwargs)
         self._orivals = None
         self._number_ori = None
         self._sfvals = None
@@ -163,6 +163,8 @@ class StaticGratings(StimulusAnalysis):
                 metrics_df['firing_rate_sg'] = [self._get_overall_firing_rate(unit) for unit in unit_ids]
                 metrics_df['fano_sg'] = [self._get_fano_factor(unit, self._get_preferred_condition(unit)) for unit in unit_ids]
                 metrics_df['lifetime_sparseness_sg'] = [self._get_lifetime_sparseness(unit) for unit in unit_ids]
+                metrics_df['sig_fraction_shuffle_sg'] = [self.responsiveness_vs_shuffle.loc[unit] for unit in unit_ids]
+                metrics_df['sig_fraction_spont_sg'] = [self.responsiveness_vs_spontaneous.loc[unit] for unit in unit_ids]
                 metrics_df.loc[:, ['run_pval_sg', 'run_mod_sg']] = \
                         [self._get_running_modulation(unit, self._get_preferred_condition(unit)) for unit in unit_ids]
 

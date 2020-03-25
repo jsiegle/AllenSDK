@@ -33,9 +33,9 @@ class ReceptiveFieldMapping(StimulusAnalysis):
         metrics_table_df = rf_analysis.metrics()
 
     """
-    def __init__(self, ecephys_session, col_pos_x='x_position', col_pos_y='y_position', trial_duration=0.25,
+    def __init__(self, ecephys_session, is_ophys_session=False, col_pos_x='x_position', col_pos_y='y_position', trial_duration=0.25,
                  minimum_spike_count=10.0, mask_threshold=0.5, **kwargs):
-        super(ReceptiveFieldMapping, self).__init__(ecephys_session, trial_duration=trial_duration, **kwargs)
+        super(ReceptiveFieldMapping, self).__init__(ecephys_session, is_ophys_session=is_ophys_session, trial_duration=trial_duration, **kwargs)
 
         self._pos_x = None
         self._pos_y = None

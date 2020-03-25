@@ -32,8 +32,8 @@ class NaturalScenes(StimulusAnalysis):
 
     """
 
-    def __init__(self, ecephys_session, col_image='frame', trial_duration=0.25, **kwargs):
-        super(NaturalScenes, self).__init__(ecephys_session, trial_duration=trial_duration, **kwargs)
+    def __init__(self, ecephys_session, is_ophys_session=False, col_image='frame', trial_duration=0.25, **kwargs):
+        super(NaturalScenes, self).__init__(ecephys_session, is_ophys_session=is_ophys_session, trial_duration=trial_duration, **kwargs)
 
         self._images = None
         self._number_images = None
@@ -131,6 +131,8 @@ class NaturalScenes(StimulusAnalysis):
                 metrics_df['time_to_peak_ns'] = [self._get_time_to_peak(unit, self._get_preferred_condition(unit))
                                                  for unit in unit_ids]
                 metrics_df['lifetime_sparseness_ns'] = [self._get_lifetime_sparseness(unit) for unit in unit_ids]
+                metrics_df['sig_fraction_shuffle_ns'] = [self.responsiveness_vs_shuffle.loc[unit] for unit in unit_ids]
+                metrics_df['sig_fraction_spont_ns'] = [self.responsiveness_vs_spontaneous.loc[unit] for unit in unit_ids]
                 metrics_df.loc[:, ['run_pval_ns', 'run_mod_ns']] = [
                     self._get_running_modulation(unit, self._get_preferred_condition(unit)) for unit in unit_ids]
 
