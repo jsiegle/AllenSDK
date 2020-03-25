@@ -42,6 +42,8 @@ class StimulusAnalysis(object):
         self._presentationwise_spikes = None
         self._conditionwise_psth = None
         self._stimulus_conditions = None
+        self._responsiveness_vs_shuffle = None
+        self._responsiveness_vs_spontaneous = None
 
         self._spikes = None
         self._stim_table_spontaneous = None
@@ -439,13 +441,13 @@ class StimulusAnalysis(object):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
-            responses_spont = session.presentationwise_spike_counts(bin_edges, 
+            responses_spont = self.ecephys_session.presentationwise_spike_counts(bin_edges, 
                                                   stimulus_presentation_ids = spont_trial_inds,
                                                   unit_ids = self.unit_ids,
                                                   use_amplitudes = self._use_amplitudes,
                                                   time_domain_callback=baseline_shift_callback)
 
-            responses = session.presentationwise_spike_counts(bin_edges, 
+            responses = self.ecephys_session.presentationwise_spike_counts(bin_edges, 
                                                           stimulus_presentation_ids = self.stim_table.index.values,
                                                           unit_ids = self.unit_ids,
                                                           use_amplitudes = self._use_amplitudes
@@ -498,13 +500,13 @@ class StimulusAnalysis(object):
     
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            responses_shuff = session.presentationwise_spike_counts(bin_edges, 
+            responses_shuff = self.ecephys_session.presentationwise_spike_counts(bin_edges, 
                                                           stimulus_presentation_ids = self.stim_table.index.values,
                                                           unit_ids = self.unit_ids,
                                                           use_amplitudes = self._use_amplitudes,
                                                           time_domain_callback=shuffle_start_time_callback)
 
-            responses = session.presentationwise_spike_counts(bin_edges, 
+            responses = self.ecephys_session.presentationwise_spike_counts(bin_edges, 
                                                           stimulus_presentation_ids = self.stim_table.index.values,
                                                           unit_ids = self.unit_ids,
                                                           use_amplitudes = self._use_amplitudes
@@ -614,7 +616,7 @@ class StimulusAnalysis(object):
             spike_counts = subset['spike_amplitudes'].values 
         else:
             spike_counts = subset['spike_counts'].values 
-            
+
         return fano_factor(spike_counts)
 
     def _get_time_to_peak(self, unit_id, preferred_condition):
