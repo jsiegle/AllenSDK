@@ -16,7 +16,7 @@ import warnings
 warnings.simplefilter(action='ignore', category=RuntimeWarning)
 
 class StimulusAnalysis(object):
-    def __init__(self, ecephys_session, is_phys_session=False, trial_duration=None, **kwargs):
+    def __init__(self, ecephys_session, is_ophys_session=False, trial_duration=None, **kwargs):
         """
         :param ecephys_session: an EcephySession object or path to ece nwb file.
         """
