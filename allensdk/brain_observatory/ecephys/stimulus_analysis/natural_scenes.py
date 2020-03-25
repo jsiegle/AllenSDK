@@ -128,8 +128,8 @@ class NaturalScenes(StimulusAnalysis):
                 metrics_df['firing_rate_ns'] = [self._get_overall_firing_rate(unit) for unit in unit_ids]
                 metrics_df['fano_ns'] = [self._get_fano_factor(unit, self._get_preferred_condition(unit))
                                          for unit in unit_ids]
-                metrics_df['time_to_peak_ns'] = [self._get_time_to_peak(unit, self._get_preferred_condition(unit))
-                                                 for unit in unit_ids]
+                #metrics_df['time_to_peak_ns'] = [self._get_time_to_peak(unit, self._get_preferred_condition(unit))
+                #                                 for unit in unit_ids]
                 metrics_df['lifetime_sparseness_ns'] = [self._get_lifetime_sparseness(unit) for unit in unit_ids]
                 metrics_df['sig_fraction_shuffle_ns'] = [self.responsiveness_vs_shuffle.loc[unit] for unit in unit_ids]
                 metrics_df['sig_fraction_spont_ns'] = [self.responsiveness_vs_spontaneous.loc[unit] for unit in unit_ids]

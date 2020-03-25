@@ -582,7 +582,11 @@ class StimulusAnalysis(object):
             self.presentationwise_statistics['stimulus_condition_id'] == preferred_condition
         ].xs(unit_id, level='unit_id')
 
-        spike_counts = subset['spike_counts'].values 
+        if self._use_amplitudes:
+            spike_counts = subset['spike_amplitudes'].values 
+        else:
+            spike_counts = subset['spike_counts'].values 
+
         running_speeds = subset['running_speed'].values
         return running_modulation(spike_counts, running_speeds, threshold)
 
@@ -606,7 +610,11 @@ class StimulusAnalysis(object):
             self.presentationwise_statistics['stimulus_condition_id'] == preferred_condition
         ].xs(unit_id, level=1)
 
-        spike_counts = subset['spike_counts'].values
+        if self._use_amplitudes:
+            spike_counts = subset['spike_amplitudes'].values 
+        else:
+            spike_counts = subset['spike_counts'].values 
+            
         return fano_factor(spike_counts)
 
     def _get_time_to_peak(self, unit_id, preferred_condition):
