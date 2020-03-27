@@ -163,8 +163,8 @@ class StaticGratings(StimulusAnalysis):
                 metrics_df['firing_rate_sg'] = [self._get_overall_firing_rate(unit) for unit in unit_ids]
                 metrics_df['fano_sg'] = [self._get_fano_factor(unit, self._get_preferred_condition(unit)) for unit in unit_ids]
                 metrics_df['lifetime_sparseness_sg'] = [self._get_lifetime_sparseness(unit) for unit in unit_ids]
-                metrics_df['sig_fraction_shuffle_sg'] = [self.responsiveness_vs_shuffle.loc[unit] for unit in unit_ids]
-                metrics_df['sig_fraction_spont_sg'] = [self.responsiveness_vs_spontaneous.loc[unit] for unit in unit_ids]
+                metrics_df['sig_fraction_shuffle_sg'] = [self.responsiveness_vs_shuffle.loc[unit].sig_fraction for unit in unit_ids]
+                metrics_df['sig_fraction_spont_sg'] = [self.responsiveness_vs_spontaneous.loc[unit].sig_fraction for unit in unit_ids]
                 metrics_df.loc[:, ['run_pval_sg', 'run_mod_sg']] = \
                         [self._get_running_modulation(unit, self._get_preferred_condition(unit)) for unit in unit_ids]
 

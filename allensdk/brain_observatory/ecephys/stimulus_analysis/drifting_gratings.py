@@ -211,8 +211,8 @@ class DriftingGratings(StimulusAnalysis):
                 metrics_df['fano_dg'] = [self._get_fano_factor(unit, self._get_preferred_condition(unit))
                                          for unit in unit_ids]
                 metrics_df['lifetime_sparseness_dg'] = [self._get_lifetime_sparseness(unit) for unit in unit_ids]
-                metrics_df['sig_fraction_shuffle_dg'] = [self.responsiveness_vs_shuffle.loc[unit] for unit in unit_ids]
-                metrics_df['sig_fraction_spont_dg'] = [self.responsiveness_vs_spontaneous.loc[unit] for unit in unit_ids]
+                metrics_df['sig_fraction_shuffle_dg'] = [self.responsiveness_vs_shuffle.loc[unit].sig_fraction for unit in unit_ids]
+                metrics_df['sig_fraction_spont_dg'] = [self.responsiveness_vs_spontaneous.loc[unit].sig_fraction for unit in unit_ids]
                 metrics_df.loc[:, ['run_pval_dg', 'run_mod_dg']] = [
                     self._get_running_modulation(unit, self._get_preferred_condition(unit)) for unit in unit_ids]
 
@@ -238,9 +238,13 @@ class DriftingGratings(StimulusAnalysis):
                                                             != 'null'][self._col_tf].unique())
         self._number_tf = len(self._tfvals)
 
-        self._contrastvals = np.sort(self.stimulus_conditions.loc[self.stimulus_conditions[self._col_contrast]
-                                                                  != 'null'][self._col_contrast].unique())
-        self._number_contrast = len(self._contrastvals)
+        try:
+            self._contrastvals = np.sort(self.stimulus_conditions.loc[self.stimulus_conditions[self._col_contrast]
+                                                                      != 'null'][self._col_contrast].unique())
+            self._number_contrast = len(self._contrastvals)
+        except KeyError:
+            self._contrastvals = []
+            self._number_contrast = 0
 
     def _get_pref_ori(self, unit_id):
         """ Calculate the preferred orientation condition for a given unit

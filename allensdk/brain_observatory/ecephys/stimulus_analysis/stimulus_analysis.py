@@ -94,6 +94,8 @@ class StimulusAnalysis(object):
                 # If the user passes a list/array of ids
                 units_df = units_df.loc[self._unit_filter]
 
+                print(units_df.ecephys_structure_acronym.unique())
+
             elif isinstance(self._unit_filter, dict):
                 if 'unit_id' in self._unit_filter.keys():
                     # If user wants to filter by the unit_id column which is actually the dataframe index
@@ -470,8 +472,8 @@ class StimulusAnalysis(object):
 
             sig_fraction = [get_sig_fraction(unit_id) for unit_id in self.unit_ids]
 
-        return pd.DataFrame(index={'unit_id' : self.unit_ids}, 
-                            data={'sig_fraction' : sig_fraction})
+        return pd.DataFrame(index = self.unit_ids, 
+                            data = {'sig_fraction' : sig_fraction})
     
     def _calc_shuffle_p_values(self, shift_s=1000):
         """ Calculates the fraction of responses to each unit's preferred condition
@@ -529,8 +531,8 @@ class StimulusAnalysis(object):
 
             sig_fraction = [get_sig_fraction(unit_id) for unit_id in self.unit_ids]
 
-        return pd.DataFrame(index={'unit_id' : self.unit_ids}, 
-                            data={'sig_fraction' : sig_fraction})
+        return pd.DataFrame(index = self.unit_ids, 
+                            data = {'sig_fraction' : sig_fraction})
 
     @property
     def metrics(self):

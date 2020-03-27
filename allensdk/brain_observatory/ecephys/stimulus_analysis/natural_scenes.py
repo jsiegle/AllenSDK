@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 import logging
 import warnings
+import datetime
+
+now = datetime.datetime.now
 
 from .stimulus_analysis import StimulusAnalysis
 
@@ -119,22 +122,45 @@ class NaturalScenes(StimulusAnalysis):
             if len(self.stim_table) > 0:
                 logger.info('Calculating metrics for ' + self.name)
 
-                metrics_df['pref_image_ns'] = [self._get_preferred_condition(unit) for unit in unit_ids]
+                t = now()
+                metrics_df['pref_image_ns'] = [self._get_preferred_image(unit) for unit in unit_ids]
+                print('  - pref_image_ns: ' + str((now() - t).seconds) + ' s')
+
                 metrics_df['pref_images_multi_ns'] = [
                     self._check_multiple_pref_conditions(unit_id, self._col_image, self.images_nonblank)
                     for unit_id in unit_ids
                 ]
+                
+                t = now()
                 metrics_df['image_selectivity_ns'] = [self._get_image_selectivity(unit) for unit in unit_ids]
+                print('  - image_selectivity_ns: ' + str((now() - t).seconds) + ' s')
+
+                t = now()
                 metrics_df['firing_rate_ns'] = [self._get_overall_firing_rate(unit) for unit in unit_ids]
+                print('  - firing_rate_ns: ' + str((now() - t).seconds) + ' s')
+
+                t = now()
                 metrics_df['fano_ns'] = [self._get_fano_factor(unit, self._get_preferred_condition(unit))
                                          for unit in unit_ids]
-                #metrics_df['time_to_peak_ns'] = [self._get_time_to_peak(unit, self._get_preferred_condition(unit))
-                #                                 for unit in unit_ids]
+                print('  - fano_ns: ' + str((now() - t).seconds) + ' s')
+
+                t = now()
                 metrics_df['lifetime_sparseness_ns'] = [self._get_lifetime_sparseness(unit) for unit in unit_ids]
-                metrics_df['sig_fraction_shuffle_ns'] = [self.responsiveness_vs_shuffle.loc[unit] for unit in unit_ids]
-                metrics_df['sig_fraction_spont_ns'] = [self.responsiveness_vs_spontaneous.loc[unit] for unit in unit_ids]
+                print('  - lifetime_sparseness_ns: ' + str((now() - t).seconds) + ' s')
+
+                t = now()
+                metrics_df['sig_fraction_shuffle_ns'] = [self.responsiveness_vs_shuffle.loc[unit].sig_fraction for unit in unit_ids]
+                print('  - sig_fraction_shuffle_ns: ' + str((now() - t).seconds) + ' s')
+
+                t = now()
+                metrics_df['sig_fraction_spont_ns'] = [self.responsiveness_vs_spontaneous.loc[unit].sig_fraction for unit in unit_ids]
+                print('  - sig_fraction_shuffle_ns: ' + str((now() - t).seconds) + ' s')
+
+                t = now() 
                 metrics_df.loc[:, ['run_pval_ns', 'run_mod_ns']] = [
                     self._get_running_modulation(unit, self._get_preferred_condition(unit)) for unit in unit_ids]
+
+                print('  - run_pval_ns: ' + str((now() - t).seconds) + ' s')
 
             self._metrics = metrics_df
 
@@ -156,6 +182,18 @@ class NaturalScenes(StimulusAnalysis):
 
         unit_stats = self.conditionwise_statistics.loc[unit_id].drop(index=self.null_condition)
         return image_selectivity(unit_stats['spike_mean'].values, num_steps=num_steps)
+
+    def _get_preferred_image(self, unit_id):
+
+        similar_conditions = [self.stimulus_conditions.index[self.stimulus_conditions[self._col_image] == image].tolist()
+                              for image in self.images_nonblank]
+        df = pd.DataFrame(
+            index=self.images_nonblank,
+            data={'spike_mean': [self.conditionwise_statistics.loc[unit_id].loc[condition_inds]['spike_mean'].mean()
+                                 for condition_inds in similar_conditions]}
+        ).rename_axis(self._col_image)
+
+        return df.idxmax().iloc[0]
 
 
 def image_selectivity(spike_means, num_steps=1000):
