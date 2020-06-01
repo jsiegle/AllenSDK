@@ -136,7 +136,9 @@ class StaticGratings(StimulusAnalysis):
                 ('fano_sg', np.float64),
                 ('lifetime_sparseness_sg', np.float64), 
                 ('run_pval_sg', np.float64),
-                ('run_mod_sg', np.float64)]
+                ('run_mod_sg', np.float64),
+                ('sig_fraction_shuffle_sg', np.float64),
+                ('sig_fraction_spont_sg', np.float64)]
 
     @property
     def metrics(self):

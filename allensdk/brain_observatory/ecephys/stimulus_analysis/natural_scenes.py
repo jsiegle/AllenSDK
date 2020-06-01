@@ -109,7 +109,9 @@ class NaturalScenes(StimulusAnalysis):
                 ('time_to_peak_ns', np.float64), 
                 ('lifetime_sparseness_ns', np.float64),
                 ('run_pval_ns', np.float64), 
-                ('run_mod_ns', np.float64)]
+                ('run_mod_ns', np.float64),
+                ('sig_fraction_shuffle_ns', np.float64),
+                ('sig_fraction_spont_ns', np.float64)]
 
     @property
     def metrics(self):

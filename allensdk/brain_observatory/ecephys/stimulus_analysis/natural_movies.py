@@ -56,14 +56,47 @@ class NaturalMovies(StimulusAnalysis):
     @property
     def null_condition(self):
         return -1
+
+    @property
+    def stim_table_nm1(self):
+        if self._stim_table_nm1 is None:
+            self._stim_table_nm1 = extract_movie_stim_table('natural_movie_one')
+        return self._stim_table_nm1
+
+    @property
+    def stim_table_nm3(self):
+        if self._stim_table_nm3 is None:
+            self._stim_table_nm3 = extract_movie_stim_table('natural_movie_three')
+        return self._stim_table_nm3
+
+
+    def extract_movie_stim_table(self, movie_name):
+
+        stim_table = self.ecephys_session.stimulus_presentations[session.stimulus_presentations.stimulus_name == 
+                                                movie_name]
+
+        start_times = stim_table[stim_table.frame == 0].start_time.values
+        stop_times = stim_table[stim_table.frame == np.max(stim_table.frame)].stop_time.values
+
+        stim_table = stim_table[stim_table.frame == 0]
+        stim_table['stop_time'] = stop_times
+        stim_table['duration'] = stop_times - start_times
+
+        return stim_table
     
     @property
     def METRICS_COLUMNS(self):
-        return [('fano_nm', np.uint64), 
-                ('firing_rate_nm', np.float64),
-                ('lifetime_sparseness_nm', np.float64), 
-                ('run_pval_ns', np.float64), 
-                ('run_mod_ns', np.float64)]
+        return [('firing_rate_nm1', np.float64),
+                ('firing_rate_nm3', np.float64),
+                ('lifetime_sparseness_nm1', np.float64), 
+                ('lifetime_sparseness_nm3', np.float64),
+                ('reliability_nm1', np.float64),
+                ('reliability_nm3', np.float64),
+                ('peak_frame_nm1', np.float64),
+                ('peak_frame_nm3', np.float64),
+                ('sig_fraction_shuffle_nm1', np.float64),
+                ('sig_fraction_shuffle_nm3', np.float64)
+                ]
 
     @property
     def metrics(self):
@@ -72,13 +105,18 @@ class NaturalMovies(StimulusAnalysis):
 
             unit_ids = self.unit_ids
             metrics_df = self.empty_metrics_table()
-            metrics_df['fano_nm'] = [self._get_fano_factor(unit, self._get_preferred_condition(unit))
-                                     for unit in unit_ids]
-            metrics_df['firing_rate_nm'] = [self._get_overall_firing_rate(unit) for unit in unit_ids]
-            metrics_df['lifetime_sparseness_nm'] = [self._get_lifetime_sparseness(unit) for unit in unit_ids]
-            run_vals = [self._get_running_modulation(unit, self._get_preferred_condition(unit)) for unit in unit_ids]
-            metrics_df['run_pval_nm'] = [rv[0] for rv in run_vals]
-            metrics_df['run_mod_nm'] = [rv[1] for rv in run_vals]
+            
+            metrics_df['firing_rate_nm1'] = [self._get_overall_firing_rate_nm(unit, 'natural_movie_one') for unit in unit_ids]
+            metrics_df['firing_rate_nm3'] = [self._get_overall_firing_rate_nm(unit, 'natural_movie_three') for unit in unit_ids]
+
+            metrics_df['lifetime_sparseness_nm1'] = [self._get_lifetime_sparseness_nm(unit, 'natural_movie_one') for unit in unit_ids]
+            metrics_df['lifetime_sparseness_nm3'] = [self._get_lifetime_sparseness_nm(unit, 'natural_movie_three') for unit in unit_ids]
+
+            metrics_df['peak_frame_nm1'] = [self._get_peak_frame_nm(unit, 'natural_movie_one') for unit in unit_ids]
+            metrics_df['peak_frame_nm3'] = [self._get_peak_frame_nm(unit, 'natural_movie_three') for unit in unit_ids]
+
+            metrics_df['sig_fraction_shuffle_nm1'] = [self.responsiveness_vs_shuffle_nm(unit, 'natural_movie_one') for unit in unit_ids]
+            metrics_df['sig_fraction_shuffle_nm3'] = [self.responsiveness_vs_shuffle_nm(unit, 'natural_movie_three') for unit in unit_ids]
 
             self._metrics = metrics_df
 
@@ -86,7 +124,7 @@ class NaturalMovies(StimulusAnalysis):
 
     @classmethod
     def known_stimulus_keys(cls):
-        return ['natural_movies', 'natural_movie_1', 'natural_movie_3']
+        return ['natural_movies', 'natural_movie_one', 'natural_movie_three']
 
     def _get_stim_table_stats(self):
         pass

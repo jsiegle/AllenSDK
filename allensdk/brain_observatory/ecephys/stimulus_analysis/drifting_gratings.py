@@ -180,7 +180,9 @@ class DriftingGratings(StimulusAnalysis):
                 ('fano_dg', np.float64),
                 ('lifetime_sparseness_dg', np.float64), 
                 ('run_pval_dg', np.float64),
-                ('run_mod_dg', np.float64)]
+                ('run_mod_dg', np.float64),
+                ('sig_fraction_shuffle_dg', np.float64),
+                ('sig_fraction_spont_dg', np.float64)]
 
     @property
     def metrics(self):
