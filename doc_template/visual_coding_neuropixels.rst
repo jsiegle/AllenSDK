@@ -18,6 +18,7 @@ Additional tutorials are available on the following topics:
   2. `Unit quality metrics <_static/examples/nb/ecephys_quality_metrics.html>`_ `(download .ipynb) <_static/examples/nb/ecephys_quality_metrics.ipynb>`_
   3. `LFP data analysis <_static/examples/nb/ecephys_lfp_analysis.html>`_ `(download .ipynb) <_static/examples/nb/ecephys_lfp_analysis.ipynb>`_
   4. `Receptive field mapping <_static/examples/nb/ecephys_receptive_fields.html>`_ `(download .ipynb) <_static/examples/nb/ecephys_receptive_fields.ipynb>`_
+  5. `Optotagging <_static/examples/nb/ecephys_optotagging.html>`_ `(download .ipynb) <_static/examples/nb/ecephys_optotagging.ipynb>`_
 
 For detailed information about the experimental design, data acquisition, and informatics methods, please refer to our `technical whitepaper <https://brainmapportal-live-4cc80a57cd6e400d854-f7fdcae.divio-media.net/filer_public/80/75/8075a100-ca64-429a-b39a-569121b612b2/neuropixels_visual_coding_-_white_paper_v10.pdf>`_. AllenSDK 
 API documentation `is available here <allensdk.brain_observatory.ecephys.html>`_.
@@ -71,6 +72,14 @@ Visual Stimulus Sets
 A central aim of the Visual Coding – Neuropixels project is to measure the impact of visual stimuli on neurons throughout the mouse visual system. To that end, all mice viewed one of two possible stimulus sets, known as "Brain Observatory 1.1" or "Functional Connectivity". Both stimulus sets began with a Gabor stimulus flashed at 81 different locations on the screen, used to map receptive fields of visually responsive units. Next, the mice were shown brief flashes of light or dark, to measure the temporal dynamics of the visual response.
 
 The remainder of the visual stimulus set either consisted of the same stimuli shown in the two-photon experiments ("Brain Observatory 1.1"), or a subset of those stimuli shown with a higher number of repeats. We also added a dot motion stimulus, to allow us to measure the speed tuning of units across the mouse visual system.
+
+
+AllenSDK 2.0 and Data Compatability
+-----------------------------------
+
+AllenSDK version 2.0 marks a major update to released Visual Coding Neuropixels datasets. Due to newer versions of pynwb/hdmf having issues reading previously released Visual Coding Neuropixels NWB files and due to the significant reorganization of updated NWB file contents, this release contains breaking changes that necessitate a major version revision. NWB files released prior to 6/11/2020 are not guaranteed to work with the 2.0.0 version of AllenSDK. If you cannot or choose not to re-download the updated NWB files, you can continue using a prior version of AllenSDK (< 2.0.0) to access them. However, no further features or bugfixes for AllenSDK (< 2.0.0) are planned. Data released for other projects (Cell Types, Mouse Connectivity, etc.) are *NOT* affected and will *NOT* need to be re-downloaded.
+
+When using the Visual Coding **EcephysProjectCache** from this updated AllenSDK version, if a **ManifestError** is encountered, this indicates that previously downloaded cached data files need to be removed and re-downloaded. The location these files as well as manifest are user defined and are set when instantiating an **EcephysProjectCache**.
 
 
 Quality Metrics

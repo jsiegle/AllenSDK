@@ -14,10 +14,13 @@ from allensdk.internal.api import PostgresQueryMixin
 from allensdk.brain_observatory.ecephys.ecephys_project_api.http_engine import (
     HttpEngine)
 from allensdk.core.typing import SupportsStr
+from allensdk.core.authentication import DbCredentials, credential_injector
+from allensdk.core.auth_config import (
+    MTRAIN_DB_CREDENTIAL_MAP, LIMS_DB_CREDENTIAL_MAP)
 
 
 class BehaviorProjectLimsApi(BehaviorProjectBase):
-    def __init__(self, postgres_engine, app_engine):
+    def __init__(self, lims_engine, mtrain_engine, app_engine):
         """ Downloads visual behavior data from the Allen Institute's
         internal Laboratory Information Management System (LIMS). Only
         functional if connected to the Allen Institute Network. Used to load
@@ -26,14 +29,25 @@ class BehaviorProjectLimsApi(BehaviorProjectBase):
         Typically want to construct an instance of this class by calling
             `BehaviorProjectLimsApi.default()`.
 
+        Set log level to debug to see SQL queries dumped by
+        "BehaviorProjectLimsApi" logger.
+
         Note -- Currently the app engine is unused because we aren't yet
         supporting the download of stimulus templates for visual behavior
         data. This feature will be added at a later date.
 
         Parameters
         ----------
-        postgres_engine :
+        lims_engine :
             used for making queries against the LIMS postgres database. Must
+            implement:
+                select : takes a postgres query as a string. Returns a pandas
+                    dataframe of results
+                fetchall : takes a postgres query as a string. If there is
+                    exactly one column in the response, return the values as a
+                    list.
+        mtrain_engine :
+            used for making queries against the mtrain postgres database. Must
             implement:
                 select : takes a postgres query as a string. Returns a pandas
                     dataframe of results
@@ -46,40 +60,65 @@ class BehaviorProjectLimsApi(BehaviorProjectBase):
                 stream : takes a url as a string. Returns an iterable yielding
                 the response body as bytes.
         """
-        self.postgres_engine = postgres_engine
+        self.lims_engine = lims_engine
+        self.mtrain_engine = mtrain_engine
         self.app_engine = app_engine
         self.logger = logging.getLogger("BehaviorProjectLimsApi")
 
     @classmethod
     def default(
         cls,
-        pg_kwargs: Optional[Dict[str, Any]] = None,
+        lims_credentials: Optional[DbCredentials] = None,
+        mtrain_credentials: Optional[DbCredentials] = None,
         app_kwargs: Optional[Dict[str, Any]] = None) -> \
             "BehaviorProjectLimsApi":
         """Construct a BehaviorProjectLimsApi instance with default
         postgres and app engines.
 
-        :param pg_kwargs: dict of keyword arguments to pass to the
-        PostgresQueryMixin class instance. Valid arguments include:
-            "dbname", "user", "host", "password", "port". Will use
-            defaults in PostGresQueryMixin.__init__ if unspecified.
-        :type pg_kwargs: dict
-        :param app_kwargs: dict of keyword arguments to pass to the
-            HTTPEngine class instance. Valid arguments include:
-            "scheme", "host". Will default to scheme=http, host=lims2
-            if left unspecified.
-        :type app_kwargs: dict
-        :rtype: BehaviorProjectLimsApi
+        Parameters
+        ----------
+        lims_credentials: Optional[DbCredentials]
+            Credentials to pass to the postgres connector to the lims database.
+            If left unspecified, will check environment variables for the
+            appropriate values.
+        mtrain_credentials: Optional[DbCredentials]
+            Credentials to pass to the postgres connector to the mtrain
+            database. If left unspecified, will check environment variables
+            for the appropriate values.
+        app_kwargs: Dict
+            Dict of arguments to pass to the app engine. Currently unused.
+
+        Returns
+        -------
+        BehaviorProjectLimsApi
         """
-        _pg_kwargs = pg_kwargs or dict()
 
         _app_kwargs = {"scheme": "http", "host": "lims2"}
         if app_kwargs:
             _app_kwargs.update(app_kwargs)
+        if lims_credentials:
+            lims_engine = PostgresQueryMixin(
+                dbname=lims_credentials.dbname, user=lims_credentials.user,
+                host=lims_credentials.host, password=lims_credentials.password,
+                port=lims_credentials.port)
+        else:
+            # Currying is equivalent to decorator syntactic sugar
+            lims_engine = (credential_injector(LIMS_DB_CREDENTIAL_MAP)
+                           (PostgresQueryMixin)())
 
-        pg_engine = PostgresQueryMixin(**_pg_kwargs)
+        if mtrain_credentials:
+            mtrain_engine = PostgresQueryMixin(
+                dbname=lims_credentials.dbname, user=lims_credentials.user,
+                host=lims_credentials.host, password=lims_credentials.password,
+                port=lims_credentials.port)
+        else:
+            # Currying is equivalent to decorator syntactic sugar
+            mtrain_engine = (
+                credential_injector(MTRAIN_DB_CREDENTIAL_MAP)
+                (PostgresQueryMixin)())
+
         app_engine = HttpEngine(**_app_kwargs)
-        return cls(pg_engine, app_engine)
+        return cls(lims_engine, mtrain_engine, app_engine)
 
     @staticmethod
     def _build_in_list_selector_query(
@@ -124,7 +163,7 @@ class BehaviorProjectLimsApi(BehaviorProjectBase):
             -- -- end getting all ophys_experiment_ids -- --
         """
         return query
-    
+
     @staticmethod
     def _build_line_from_donor_query(line="driver") -> str:
         """Sub-query to get a line from a donor.
@@ -160,11 +199,14 @@ class BehaviorProjectLimsApi(BehaviorProjectBase):
                 bs.ophys_session_id,
                 bs.behavior_training_id,
                 equipment.name as equipment_name,
+                bs.date_of_acquisition,
                 d.id as donor_id,
                 d.full_genotype,
                 reporter.reporter_line,
                 driver.driver_line,
                 g.name AS sex,
+                DATE_PART('day', bs.date_of_acquisition - d.date_of_birth)
+                    AS age_in_days,
                 bs.foraging_id
             FROM behavior_sessions bs
             JOIN donors d on bs.donor_id = d.id
@@ -178,7 +220,8 @@ class BehaviorProjectLimsApi(BehaviorProjectBase):
             JOIN equipment ON equipment.id = bs.equipment_id
             {session_sub_query}
         """
-        return self.postgres_engine.select(query)
+        self.logger.debug(f"get_behavior_session_table query: \n{query}")
+        return self.lims_engine.select(query)
 
     def _get_foraging_ids_from_behavior_session(
             self, behavior_session_ids: List[int]) -> List[str]:
@@ -193,7 +236,7 @@ class BehaviorProjectLimsApi(BehaviorProjectBase):
             """
         self.logger.debug("get_foraging_ids_from_behavior_session query: \n"
                           f"{forag_ids_query}")
-        foraging_ids = self.postgres_engine.fetchall(forag_ids_query)
+        foraging_ids = self.lims_engine.fetchall(forag_ids_query)
 
         self.logger.debug(f"Retrieved {len(foraging_ids)} foraging ids for"
                           f" behavior stage query. Ids = {foraging_ids}")
@@ -201,12 +244,12 @@ class BehaviorProjectLimsApi(BehaviorProjectBase):
 
     def _get_behavior_stage_table(
             self,
-            behavior_session_ids: Optional[List[int]] = None,
-            mtrain_db: Optional[PostgresQueryMixin] = None):
+            behavior_session_ids: Optional[List[int]] = None):
         # Select fewer rows if possible via behavior_session_id
         if behavior_session_ids:
             foraging_ids = self._get_foraging_ids_from_behavior_session(
                 behavior_session_ids)
+            foraging_ids = [f"'{fid}'" for fid in foraging_ids]
         # Otherwise just get the full table from mtrain
         else:
             foraging_ids = None
@@ -214,12 +257,6 @@ class BehaviorProjectLimsApi(BehaviorProjectBase):
         foraging_ids_query = self._build_in_list_selector_query(
             "bs.id", foraging_ids)
 
-        # TODO: this password has already been exposed in code but we really
-        # need to move towards using a secrets database
-        if not mtrain_db:
-            mtrain_db = PostgresQueryMixin(
-                dbname="mtrain", user="mtrainreader",
-                host="prodmtrain1", port=5432, password="mtrainro")
         query = f"""
             SELECT
                 stages.name as session_type,
@@ -228,7 +265,8 @@ class BehaviorProjectLimsApi(BehaviorProjectBase):
             JOIN stages ON stages.id = bs.state_id
             {foraging_ids_query};
         """
-        return mtrain_db.select(query)
+        self.logger.debug(f"_get_behavior_stage_table query: \n {query}")
+        return self.mtrain_engine.select(query)
 
     def get_session_data(self, ophys_session_id: int) -> BehaviorOphysSession:
         """Returns a BehaviorOphysSession object that contains methods
@@ -300,13 +338,13 @@ class BehaviorProjectLimsApi(BehaviorProjectBase):
             JOIN (
                 {self._build_line_from_donor_query(line="driver")}
             ) driver on driver.donor_id = d.id
-            LEFT JOIN imaging_depths id ON id.id = os.imaging_depth_id
+            LEFT JOIN imaging_depths id ON id.id = oe.imaging_depth_id
             JOIN structures st ON st.id = oe.targeted_structure_id
             JOIN equipment ON equipment.id = os.equipment_id
             {experiment_query};
         """
         self.logger.debug(f"get_experiment_table query: \n{query}")
-        return self.postgres_engine.select(query)
+        return self.lims_engine.select(query)
 
     def _get_session_table(
             self,
@@ -363,7 +401,7 @@ class BehaviorProjectLimsApi(BehaviorProjectBase):
             {session_query};
         """
         self.logger.debug(f"get_session_table query: \n{query}")
-        return self.postgres_engine.select(query)
+        return self.lims_engine.select(query)
 
     def get_session_table(
             self,

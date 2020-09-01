@@ -1,30 +1,41 @@
-import matplotlib.image as mpimg  # NOQA: E402
+import logging
+from typing import Optional
+from pathlib import Path
+
 import numpy as np
 import h5py
 import pandas as pd
 import uuid
-import json
+import matplotlib.image as mpimg  # NOQA: E402
 
 from allensdk.api.cache import memoize
 from allensdk.internal.api.ophys_lims_api import OphysLimsApi
-from allensdk.brain_observatory.behavior.sync import get_sync_data, get_stimulus_rebase_function
+from allensdk.brain_observatory.behavior.sync import (
+    get_sync_data, get_stimulus_rebase_function, frame_time_offset)
+from allensdk.brain_observatory.sync_dataset import Dataset
+from allensdk.brain_observatory import sync_utilities
+from allensdk.internal.brain_observatory.time_sync import OphysTimeAligner
 from allensdk.brain_observatory.behavior.stimulus_processing import get_stimulus_presentations, get_stimulus_templates, get_stimulus_metadata
 from allensdk.brain_observatory.behavior.metadata_processing import get_task_parameters
 from allensdk.brain_observatory.behavior.running_processing import get_running_df
 from allensdk.brain_observatory.behavior.rewards_processing import get_rewards
 from allensdk.brain_observatory.behavior.trials_processing import get_trials
+from allensdk.brain_observatory.behavior.eye_tracking_processing import load_eye_tracking_hdf, process_eye_tracking_data
 from allensdk.brain_observatory.running_speed import RunningSpeed
 from allensdk.brain_observatory.behavior.image_api import ImageApi
 from allensdk.internal.api import PostgresQueryMixin
 from allensdk.brain_observatory.behavior.behavior_ophys_api import BehaviorOphysApiBase
 from allensdk.brain_observatory.behavior.trials_processing import get_extended_trials
 from allensdk.internal.core.lims_utilities import safe_system_path
+from allensdk.core.auth_config import LIMS_DB_CREDENTIAL_MAP
+from allensdk.core.authentication import credential_injector, DbCredentials
 
 
 class BehaviorOphysLimsApi(OphysLimsApi, BehaviorOphysApiBase):
 
-    def __init__(self, ophys_experiment_id):
-        super().__init__(ophys_experiment_id)
+    def __init__(self, ophys_experiment_id: int,
+                 lims_credentials: Optional[DbCredentials] = None):
+        super().__init__(ophys_experiment_id, lims_credentials)
 
     @memoize
     def get_sync_data(self):
@@ -33,8 +44,10 @@ class BehaviorOphysLimsApi(OphysLimsApi, BehaviorOphysApiBase):
 
     @memoize
     def get_stimulus_timestamps(self):
-        monitor_delay = .0351
-        return self.get_sync_data()['stimulus_times_no_delay'] + monitor_delay
+        sync_path = self.get_sync_file()
+        timestamps, _, _ = (OphysTimeAligner(sync_file=sync_path)
+                            .corrected_stim_timestamps)
+        return timestamps
 
     @memoize
     def get_ophys_timestamps(self):
@@ -55,11 +68,11 @@ class BehaviorOphysLimsApi(OphysLimsApi, BehaviorOphysApiBase):
     @memoize
     def get_experiment_container_id(self):
         query = '''
-                SELECT visual_behavior_experiment_container_id 
-                FROM ophys_experiments_visual_behavior_experiment_containers 
+                SELECT visual_behavior_experiment_container_id
+                FROM ophys_experiments_visual_behavior_experiment_containers
                 WHERE ophys_experiment_id= {};
                 '''.format(self.get_ophys_experiment_id())
-        return self.fetchone(query, strict=False)
+        return self.lims_db.fetchone(query, strict=False)
 
     @memoize
     def get_behavior_stimulus_file(self):
@@ -71,7 +84,7 @@ class BehaviorOphysLimsApi(OphysLimsApi, BehaviorOphysApiBase):
                 LEFT JOIN well_known_files stim ON stim.attachable_id=bs.id AND stim.attachable_type = 'BehaviorSession' AND stim.well_known_file_type_id IN (SELECT id FROM well_known_file_types WHERE name = 'StimulusPickle')
                 WHERE oe.id= {};
                 '''.format(self.get_ophys_experiment_id())
-        return safe_system_path(self.fetchone(query, strict=True))
+        return safe_system_path(self.lims_db.fetchone(query, strict=True))
 
     def get_behavior_session_uuid(self):
         behavior_stimulus_file = self.get_behavior_stimulus_file()
@@ -156,9 +169,26 @@ class BehaviorOphysLimsApi(OphysLimsApi, BehaviorOphysApiBase):
         return get_stimulus_templates(data)
 
     @memoize
-    def get_licks(self):
+    def get_sync_licks(self):
         lick_times = self.get_sync_data()['lick_times']
         return pd.DataFrame({'time': lick_times})
+
+    @memoize
+    def get_licks(self):
+        behavior_stimulus_file = self.get_behavior_stimulus_file()
+        data = pd.read_pickle(behavior_stimulus_file)
+        rebase_function = self.get_stimulus_rebase_function()
+        # Get licks from pickle file (need to add an offset to align with
+        # the trial_log time stream)
+        lick_frames = (data["items"]["behavior"]["lick_sensors"][0]
+                       ["lick_events"])
+        vsyncs = data["items"]["behavior"]["intervalsms"]
+        vsync_times_raw = np.hstack((0, vsyncs)).cumsum() / 1000.0  # cumulative time
+        vsync_offset = frame_time_offset(data)
+        vsync_times = vsync_times_raw + vsync_offset
+        lick_times = [vsync_times[frame] for frame in lick_frames]
+        # Align pickle data with sync time stream
+        return pd.DataFrame({"time": list(map(rebase_function, lick_times))})
 
     @memoize
     def get_rewards(self):
@@ -189,7 +219,7 @@ class BehaviorOphysLimsApi(OphysLimsApi, BehaviorOphysApiBase):
     @memoize
     def get_corrected_fluorescence_traces(self):
         demix_file = self.get_demix_file()
-        
+
         g = h5py.File(demix_file)
         corrected_fluorescence_trace_array = np.asarray(g['data'])
         g.close()
@@ -229,7 +259,7 @@ class BehaviorOphysLimsApi(OphysLimsApi, BehaviorOphysApiBase):
                 LEFT JOIN well_known_files wkf ON wkf.attachable_id=oe.id AND wkf.well_known_file_type_id IN (SELECT id FROM well_known_file_types WHERE name = 'BehaviorOphysNwb')
                 WHERE oe.id = {};
                 '''.format(self.get_ophys_experiment_id())
-        return safe_system_path(self.fetchone(query, strict=True))
+        return safe_system_path(self.lims_db.fetchone(query, strict=True))
 
     def get_stimulus_rebase_function(self):
         stimulus_timestamps_no_monitor_delay = self.get_sync_data()['stimulus_times_no_delay']
@@ -243,10 +273,46 @@ class BehaviorOphysLimsApi(OphysLimsApi, BehaviorOphysApiBase):
         data = pd.read_pickle(filename)
         return get_extended_trials(data)
 
+    @memoize
+    def get_eye_tracking_filepath(self):
+        query = '''SELECT wkf.storage_directory || wkf.filename AS eye_tracking_file
+                   FROM ophys_experiments oe
+                   LEFT JOIN well_known_files wkf ON wkf.attachable_id=oe.ophys_session_id
+                   AND wkf.attachable_type = 'OphysSession'
+                   AND wkf.well_known_file_type_id=(SELECT id FROM well_known_file_types WHERE name = 'EyeTracking Ellipses')
+                   WHERE oe.id={};
+                   '''.format(self.get_ophys_experiment_id())
+        return safe_system_path(self.lims_db.fetchone(query, strict=True))
+
+    def get_eye_tracking(self,
+                         z_threshold: float = 3.0,
+                         dilation_frames: int = 2):
+        logger = logging.getLogger("BehaviorOphysLimsApi")
+
+        logger.info(f"Getting eye_tracking_data with "
+                    f"'z_threshold={z_threshold}', "
+                    f"'dilation_frames={dilation_frames}'")
+
+        filepath = Path(self.get_eye_tracking_filepath())
+        sync_path = Path(self.get_sync_file())
+
+        eye_tracking_data = load_eye_tracking_hdf(filepath)
+        frame_times = sync_utilities.get_synchronized_frame_times(
+            session_sync_file=sync_path,
+            sync_line_label_keys=Dataset.EYE_TRACKING_KEYS)
+
+        eye_tracking_data = process_eye_tracking_data(eye_tracking_data,
+                                                      frame_times,
+                                                      z_threshold,
+                                                      dilation_frames)
+
+        return eye_tracking_data
+
     @staticmethod
     def get_ophys_experiment_df():
 
-        api = PostgresQueryMixin()
+        api = (credential_injector(LIMS_DB_CREDENTIAL_MAP)
+               (PostgresQueryMixin)())
         query = '''
                 SELECT
 
@@ -264,7 +330,7 @@ class BehaviorOphysLimsApi(OphysLimsApi, BehaviorOphysApiBase):
                 LEFT JOIN ophys_sessions os ON oe.ophys_session_id = os.id
                 LEFT JOIN specimens sp ON sp.id=os.specimen_id
                 LEFT JOIN donors d ON d.id=sp.donor_id
-                LEFT JOIN imaging_depths id ON id.id=os.imaging_depth_id
+                LEFT JOIN imaging_depths id ON id.id=oe.imaging_depth_id
                 LEFT JOIN structures st ON st.id=oe.targeted_structure_id
                 LEFT JOIN equipment ON equipment.id=os.equipment_id
                 '''
@@ -274,7 +340,8 @@ class BehaviorOphysLimsApi(OphysLimsApi, BehaviorOphysApiBase):
     @staticmethod
     def get_containers_df(only_passed=True):
 
-        api = PostgresQueryMixin()
+        api = (credential_injector(LIMS_DB_CREDENTIAL_MAP)
+               (PostgresQueryMixin)())
         if only_passed is True:
             query = '''
                     SELECT *
@@ -287,7 +354,7 @@ class BehaviorOphysLimsApi(OphysLimsApi, BehaviorOphysApiBase):
                     FROM visual_behavior_experiment_containers vbc
                     '''
 
-        return pd.read_sql(query, api.get_connection()).rename(columns={'id':'container_id'})[['container_id', 'specimen_id', 'workflow_state']]
+        return pd.read_sql(query, api.get_connection()).rename(columns={'id': 'container_id'})[['container_id', 'specimen_id', 'workflow_state']]
 
     @classmethod
     def get_api_list_by_container_id(cls, container_id):
@@ -295,8 +362,6 @@ class BehaviorOphysLimsApi(OphysLimsApi, BehaviorOphysApiBase):
         df = cls.get_ophys_experiment_df()
         oeid_list = df[df['container_id'] == container_id]['ophys_experiment_id'].values
         return [cls(oeid) for oeid in oeid_list]
-
-
 
 
 if __name__ == "__main__":

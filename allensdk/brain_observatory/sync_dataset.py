@@ -15,10 +15,12 @@ h5py   http://www.h5py.org/
 
 """
 import collections
+from typing import Union, Sequence, Optional
 
 import h5py as h5
 import numpy as np
 
+import warnings
 import logging
 logger = logging.getLogger(__name__)
 
@@ -88,12 +90,35 @@ class Dataset(object):
     FRAME_KEYS = ('frames', 'stim_vsync')
     PHOTODIODE_KEYS = ('photodiode', 'stim_photodiode')
     OPTOGENETIC_STIMULATION_KEYS = ("LED_sync", "opto_trial")
-    EYE_TRACKING_KEYS = ("cam2_exposure",  # clocks eye tracking frame pulses (port 0, line 9)
-                         "eyetracking")  # previous line label for eye tracking (prior to ~ Oct. 2018)
-    BEHAVIOR_TRACKING_KEYS = ("cam1_exposure",)  # clocks behavior tracking frame pulses (port 0, line 8)
+    EYE_TRACKING_KEYS = ("eye_frame_received",  # Expected eye tracking line label after 3/27/2020
+                         "cam2_exposure",  # clocks eye tracking frame pulses (port 0, line 9)
+                         "eyetracking",  # previous line label for eye tracking (prior to ~ Oct. 2018)
+                         "eye_tracking")  # An undocumented, but possible eye tracking line label
+    BEHAVIOR_TRACKING_KEYS = ("beh_frame_received",  # Expected behavior line label after 3/27/2020
+                              "cam1_exposure",  # clocks behavior tracking frame pulses (port 0, line 8)
+                              "behavior_monitoring")
+
+    DEPRECATED_KEYS = {"cam2_exposure",
+                       "eyetracking",
+                       "eye_tracking",
+                       "cam1_exposure",
+                       "behavior_monitoring"}
 
     def __init__(self, path):
         self.dfile = self.load(path)
+        self._check_line_labels()
+
+    def _check_line_labels(self):
+        if hasattr(self, "line_labels"):
+            deprecated_keys = set(self.line_labels) & self.DEPRECATED_KEYS
+            if deprecated_keys:
+                warnings.warn((f"The loaded sync file contains the "
+                               f"following deprecated line label keys: "
+                               f"{deprecated_keys}. Consider updating the sync "
+                               f"file line labels."), stacklevel=2)
+        else:
+            warnings.warn((f"The loaded sync file has no line labels and may "
+                           f"not be valid."), stacklevel=2)
 
     def _process_times(self):
         """
@@ -294,8 +319,37 @@ class Dataset(object):
         changes = self.get_bit_changes(bit)
         return self.get_all_times(units)[np.where(changes == 1)]
 
-    def get_edges(self, kind, keys, units='seconds'):
+    def get_edges(
+        self, 
+        kind: str, 
+        keys: Union[str, Sequence[str]], 
+        units: str = "seconds", 
+        permissive: bool = False
+    ) -> Optional[np.ndarray]:
         """ Utility function for extracting edge times from a line
+
+        Parameters
+        ----------
+        kind : One of "rising", "falling", or "all". Should this method return 
+            timestamps for rising, falling or both edges on the appropriate 
+            line
+        keys : These will be checked in sequence. Timestamps will be returned 
+            for the first which is present in the line labels
+        units : one of "seconds", "samples", or "indices". The returned 
+            "time"stamps will be given in these units.
+        raise_missing : If True and no matching line is found, a KeyError will
+            be raised
+
+        Returns
+        -------
+        An array of edge times. If raise_missing is False and none of the keys 
+            were found, returns None.
+
+        Raises
+        ------
+        KeyError : none of the provided keys were found among this dataset's 
+            line labels
+
         """
         if kind == 'falling':
             fn = self.get_falling_edges
@@ -316,7 +370,9 @@ class Dataset(object):
             except ValueError:
                 continue
 
-        raise KeyError(f"none of {keys} were found in this dataset's line labels")
+        if not permissive:
+            raise KeyError(
+                f"none of {keys} were found in this dataset's line labels")
 
     def get_falling_edges(self, line, units='samples'):
         """
